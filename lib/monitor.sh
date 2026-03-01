@@ -171,21 +171,28 @@ monitor_claude_output() {
     local monitor_pid=$!
     echo "${monitor_pid}" > "${STATE_DIR}/monitor.$$.pid"
 
-    # Run Claude Code in a PTY using macOS 'script'.
-    # Piping claude's stdout (the old approach) makes it detect a non-TTY
-    # and error with "Input must be provided via stdin or --print".
-    # 'script -q -F pipe typescript cmd' allocates a real PTY so claude runs
-    # interactively while simultaneously writing output to our FIFO for
-    # title monitoring. The typescript file is a temp file we delete on exit
-    # (script requires a real writable path; /dev/null is not accepted).
-    local claude_cmd typescript
+    # Run Claude Code in a PTY using Python's pty module.
+    # Piping claude's stdout makes it detect a non-TTY and error with
+    # "Input must be provided via stdin or --print". Python's pty.spawn
+    # allocates a real PTY so claude runs interactively while simultaneously
+    # writing output to our FIFO for title monitoring.
+    # (macOS 'script -F' was tried but consistently fails with "Permission
+    # denied" when called from inside a bash function on macOS Sonoma.)
+    local claude_cmd python_cmd
     claude_cmd=$(get_claude_cmd)
-    typescript=$(mktemp "/tmp/ccp-typescript.XXXXXX")
-    script -q -F "${pipe}" "${typescript}" "${claude_cmd}"
+    python_cmd=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo "")
+
+    if [[ -n "${python_cmd}" ]]; then
+        "${python_cmd}" "${_MONITOR_SCRIPT_DIR}/pty_wrapper.py" "${pipe}" "${claude_cmd}"
+    else
+        # Fallback: run claude directly without dynamic title monitoring
+        log_warning "python3 not found; dynamic title monitoring disabled"
+        "${claude_cmd}"
+    fi
 
     # Cleanup
     kill "${monitor_pid}" 2>/dev/null || true
-    rm -f "${pipe}" "${typescript}"
+    rm -f "${pipe}"
 }
 
 cleanup_monitor() {
