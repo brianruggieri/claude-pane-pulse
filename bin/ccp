@@ -4,8 +4,16 @@
 
 set -euo pipefail
 
-# Determine script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so LIB_DIR points at the real install location,
+# not the directory containing the ~/bin/ccp symlink.
+_CCP_SCRIPT="${BASH_SOURCE[0]}"
+while [[ -L "${_CCP_SCRIPT}" ]]; do
+    _CCP_SCRIPT_DIR="$(cd "$(dirname "${_CCP_SCRIPT}")" && pwd)"
+    _CCP_SCRIPT="$(readlink "${_CCP_SCRIPT}")"
+    [[ "${_CCP_SCRIPT}" != /* ]] && _CCP_SCRIPT="${_CCP_SCRIPT_DIR}/${_CCP_SCRIPT}"
+done
+SCRIPT_DIR="$(cd "$(dirname "${_CCP_SCRIPT}")" && pwd)"
+unset _CCP_SCRIPT _CCP_SCRIPT_DIR
 LIB_DIR="$(cd "${SCRIPT_DIR}/../lib" && pwd)"
 
 # Source libraries
