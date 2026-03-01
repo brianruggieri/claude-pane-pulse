@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 1400px; height: 840px;
+  background: #0c0d1a;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  overflow: hidden;
+}
+.label-row {
+  height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px;
+}
+.label-badge {
+  background: #0d2a1a;
+  border: 1px solid #1a6040;
+  color: #50fa7b;
+  font-size: 14px; font-weight: 600;
+  padding: 6px 18px; border-radius: 6px;
+  letter-spacing: 0.03em;
+}
+.label-sub { color: #4a4a6a; font-size: 12px; }
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 14px;
+  padding: 0 20px 20px;
+  height: calc(100% - 52px);
+}
+.pane {
+  background: #181929;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06);
+  display: flex; flex-direction: column;
+}
+.titlebar {
+  height: 34px;
+  background: linear-gradient(180deg, #2c2d40 0%, #252636 100%);
+  display: flex; align-items: center;
+  padding: 0 14px; gap: 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(0,0,0,0.35);
+}
+.tl { display: flex; gap: 7px; }
+.dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.18), 0 1px 2px rgba(0,0,0,0.4);
+}
+.close { background: #ff5f57; }
+.mini  { background: #febc2e; }
+.max   { background: #28c840; }
+/* Dynamic title styles */
+.title {
+  flex: 1; text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #b0b0cc;
+}
+.title .context { color: #9090b0; }
+.title .sep { color: #45456a; margin: 0 6px; }
+.title .status-ok   { color: #50fa7b; }
+.title .status-run  { color: #8be9fd; }
+.title .status-push { color: #ffb86c; }
+.title .status-done { color: #bd93f9; }
+.title .status-err  { color: #ff5555; }
+.body {
+  flex: 1; padding: 13px 16px 10px;
+  font-size: 12px; line-height: 1.6;
+  color: #c8c8dc; overflow: hidden;
+}
+.g  { color: #50fa7b; }
+.r  { color: #ff5555; }
+.b  { color: #8be9fd; }
+.y  { color: #f1fa8c; }
+.p  { color: #bd93f9; }
+.o  { color: #ffb86c; }
+.d  { color: #5c6482; }
+.w  { color: #f8f8f2; }
+.ps { color: #50fa7b; }
+</style>
+</head>
+<body>
+<div class="label-row">
+  <span class="label-badge">WITH claude-pane-pulse</span>
+  <span class="label-sub">Each pane shows real-time context — one glance tells you everything</span>
+</div>
+<div class="grid">
+
+  <!-- Pane 1: PR testing -->
+  <div class="pane">
+    <div class="titlebar">
+      <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+      <div class="title">
+        <span class="context">PR #89 — Fix auth</span>
+        <span class="sep">·</span>
+        <span class="status-ok">✅ Tests passed</span>
+      </div>
+    </div>
+    <div class="body">
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span> npm test<br>
+<span class="d">&gt; myrepo@1.0.0 test &gt; jest</span><br>
+<br>
+<span class="g"> PASS</span>  src/auth/login.test.ts <span class="d">(8.4s)</span><br>
+<span class="g"> PASS</span>  src/auth/session.test.ts <span class="d">(2.1s)</span><br>
+<span class="g"> PASS</span>  src/auth/token.test.ts <span class="d">(3.7s)</span><br>
+<br>
+<span class="g">✓</span> All tests passed <span class="d">(16 suites, 47 tests)</span><br>
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span>
+    </div>
+  </div>
+
+  <!-- Pane 2: Building + pushing -->
+  <div class="pane">
+    <div class="titlebar">
+      <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+      <div class="title">
+        <span class="context">Issue #12 — Refactor API</span>
+        <span class="sep">·</span>
+        <span class="status-push">⬆️ Pushing...</span>
+      </div>
+    </div>
+    <div class="body">
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span> npm run build<br>
+<span class="d">&gt; myrepo@1.0.0 build &gt; webpack --mode production</span><br>
+<br>
+webpack 5.89.0 compiled <span class="g">successfully</span> in 3421 ms<br>
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span> git push origin main<br>
+Counting objects: 15, done.<br>
+Delta compression using up to 8 threads.<br>
+Compressing objects: <span class="g">100%</span> (12/12), done.<br>
+Writing objects: <span class="g">100%</span> (15/15), 2.43 KiB | 2.43 MiB/s, done.<br>
+To github.com:brianr/myrepo.git<br>
+<span class="d">   abc1234..def5678  main → main</span><br>
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span>
+    </div>
+  </div>
+
+  <!-- Pane 3: Committed -->
+  <div class="pane">
+    <div class="titlebar">
+      <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+      <div class="title">
+        <span class="context">feat/oauth-integration</span>
+        <span class="sep">·</span>
+        <span class="status-done">💾 Committed</span>
+      </div>
+    </div>
+    <div class="body">
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span> git add src/oauth/<br>
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span> git commit -m <span class="y">'feat: add OAuth 2.0 integration'</span><br>
+[main <span class="o">7a8b9c0</span>] feat: add OAuth 2.0 integration<br>
+<span class="d"> 3 files changed, 142 insertions(+), 7 deletions(-)</span><br>
+<span class="d"> create mode 100644 src/oauth/provider.ts</span><br>
+<span class="d"> create mode 100644 src/oauth/tokens.ts</span><br>
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span>
+    </div>
+  </div>
+
+  <!-- Pane 4: Error -->
+  <div class="pane">
+    <div class="titlebar">
+      <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+      <div class="title">
+        <span class="context">Bug #47 — Login crash</span>
+        <span class="sep">·</span>
+        <span class="status-err">🐛 Error</span>
+      </div>
+    </div>
+    <div class="body">
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span> npm test src/auth/login.test.ts<br>
+<span class="d">&gt; myrepo@1.0.0 test &gt; jest src/auth/login.test.ts</span><br>
+<br>
+<span class="r"> FAIL</span>  src/auth/login.test.ts<br>
+&nbsp;&nbsp;● <span class="w">TypeError: Cannot read properties of undefined</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="r">(reading 'user')</span><br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;at <span class="b">handleLogin</span> <span class="d">(src/auth/login.ts:42:15)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;at <span class="b">processRequest</span> <span class="d">(src/middleware/auth.ts:89)</span><br>
+<span class="ps">brianr@mbp</span> <span class="b">~/myrepo</span> <span class="ps">%</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

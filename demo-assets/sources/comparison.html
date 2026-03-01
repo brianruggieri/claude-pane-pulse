@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 1400px; height: 900px;
+  background: #0c0d1a;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  overflow: hidden;
+}
+/* Top header */
+.header {
+  height: 62px;
+  display: flex; align-items: center;
+  padding: 0 24px;
+  gap: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.col-label {
+  flex: 1;
+  display: flex; align-items: center; gap: 10px;
+}
+.col-label.left { justify-content: flex-end; padding-right: 30px; }
+.col-label.right { justify-content: flex-start; padding-left: 30px; }
+.badge {
+  font-size: 13px; font-weight: 600;
+  padding: 5px 16px; border-radius: 6px;
+  letter-spacing: 0.02em;
+}
+.badge-before {
+  background: #1e0e0e; border: 1px solid #4a1a1a;
+  color: #e06060;
+}
+.badge-after {
+  background: #0a1e12; border: 1px solid #1a5030;
+  color: #50fa7b;
+}
+.sub { color: #3a3a58; font-size: 11px; }
+.divider {
+  width: 2px; height: 40px;
+  background: linear-gradient(180deg, transparent, #2a2a4a, transparent);
+  flex-shrink: 0;
+  margin: 0 10px;
+}
+/* Two-column layout */
+.cols {
+  display: flex; gap: 0;
+  padding: 16px 20px 20px;
+  height: calc(100% - 62px);
+}
+.col { flex: 1; display: flex; flex-direction: column; }
+.col-left { padding-right: 10px; }
+.col-right { padding-left: 10px; border-left: 1px solid rgba(255,255,255,0.04); }
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  flex: 1;
+}
+.pane {
+  background: #181929;
+  border-radius: 9px;
+  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.055);
+  display: flex; flex-direction: column;
+}
+.titlebar {
+  height: 28px;
+  background: linear-gradient(180deg, #2a2b3e 0%, #232434 100%);
+  display: flex; align-items: center;
+  padding: 0 10px; gap: 7px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(0,0,0,0.3);
+}
+.tl { display: flex; gap: 5px; }
+.dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.15);
+}
+.close { background: #ff5f57; }
+.mini  { background: #febc2e; }
+.max   { background: #28c840; }
+.title {
+  flex: 1; text-align: center;
+  font-size: 10.5px; letter-spacing: 0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.title-before { color: #686880; }
+.title .ctx { color: #8888a8; }
+.title .sep { color: #404060; margin: 0 5px; }
+.title .s-ok   { color: #50fa7b; }
+.title .s-push { color: #ffb86c; }
+.title .s-done { color: #bd93f9; }
+.title .s-err  { color: #ff5555; }
+.body {
+  flex: 1; padding: 9px 11px 7px;
+  font-size: 10.5px; line-height: 1.55;
+  color: #b0b0c8; overflow: hidden;
+}
+.g  { color: #50fa7b; }
+.r  { color: #ff5555; }
+.b  { color: #8be9fd; }
+.y  { color: #f1fa8c; }
+.o  { color: #ffb86c; }
+.d  { color: #4e5472; }
+.w  { color: #f8f8f2; }
+.ps { color: #50fa7b; }
+.pmt { color: #50fa7b; }
+.nb { color: #8be9fd; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="col-label left">
+    <span class="badge badge-before">WITHOUT claude-pane-pulse</span>
+    <span class="sub">All panes: "bash"</span>
+  </div>
+  <div class="divider"></div>
+  <div class="col-label right">
+    <span class="badge badge-after">WITH claude-pane-pulse</span>
+    <span class="sub">At-a-glance status</span>
+  </div>
+</div>
+
+<div class="cols">
+
+  <!-- LEFT: BEFORE -->
+  <div class="col col-left">
+    <div class="grid">
+
+      <div class="pane">
+        <div class="titlebar">
+          <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+          <div class="title title-before">bash</div>
+        </div>
+        <div class="body">
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> npm test<br>
+<span class="d">&gt; jest</span><br>
+<span class="g"> PASS</span>  src/auth/login.test.ts<br>
+<span class="g"> PASS</span>  src/auth/session.test.ts<br>
+<span class="g"> PASS</span>  src/auth/token.test.ts<br>
+<span class="g">✓</span> All tests passed <span class="d">(47 tests)</span>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="titlebar">
+          <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+          <div class="title title-before">bash</div>
+        </div>
+        <div class="body">
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> npm run build<br>
+<span class="d">&gt; webpack --mode production</span><br>
+webpack 5.89.0 compiled <span class="g">successfully</span><br>
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> git push origin main<br>
+Writing objects: <span class="g">100%</span> (15/15), done.
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="titlebar">
+          <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+          <div class="title title-before">bash</div>
+        </div>
+        <div class="body">
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> git commit -m <span class="y">'feat: OAuth'</span><br>
+[main <span class="o">7a8b9c0</span>] feat: add OAuth 2.0 integration<br>
+<span class="d"> 3 files changed, 142 insertions(+)</span><br>
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="titlebar">
+          <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+          <div class="title title-before">bash</div>
+        </div>
+        <div class="body">
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> npm test src/auth/login.test.ts<br>
+<span class="r"> FAIL</span>  src/auth/login.test.ts<br>
+&nbsp;&nbsp;● <span class="w">TypeError: Cannot read properties of undefined</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="r">(reading 'user')</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: AFTER -->
+  <div class="col col-right">
+    <div class="grid">
+
+      <div class="pane">
+        <div class="titlebar">
+          <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+          <div class="title">
+            <span class="ctx">PR #89 — Fix auth</span>
+            <span class="sep">·</span>
+            <span class="s-ok">✅ Tests passed</span>
+          </div>
+        </div>
+        <div class="body">
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> npm test<br>
+<span class="d">&gt; jest</span><br>
+<span class="g"> PASS</span>  src/auth/login.test.ts<br>
+<span class="g"> PASS</span>  src/auth/session.test.ts<br>
+<span class="g"> PASS</span>  src/auth/token.test.ts<br>
+<span class="g">✓</span> All tests passed <span class="d">(47 tests)</span>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="titlebar">
+          <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+          <div class="title">
+            <span class="ctx">Issue #12 — Refactor API</span>
+            <span class="sep">·</span>
+            <span class="s-push">⬆️ Pushing...</span>
+          </div>
+        </div>
+        <div class="body">
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> npm run build<br>
+<span class="d">&gt; webpack --mode production</span><br>
+webpack 5.89.0 compiled <span class="g">successfully</span><br>
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> git push origin main<br>
+Writing objects: <span class="g">100%</span> (15/15), done.
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="titlebar">
+          <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+          <div class="title">
+            <span class="ctx">feat/oauth-integration</span>
+            <span class="sep">·</span>
+            <span class="s-done">💾 Committed</span>
+          </div>
+        </div>
+        <div class="body">
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> git commit -m <span class="y">'feat: OAuth'</span><br>
+[main <span class="o">7a8b9c0</span>] feat: add OAuth 2.0 integration<br>
+<span class="d"> 3 files changed, 142 insertions(+)</span><br>
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="titlebar">
+          <div class="tl"><div class="dot close"></div><div class="dot mini"></div><div class="dot max"></div></div>
+          <div class="title">
+            <span class="ctx">Bug #47 — Login crash</span>
+            <span class="sep">·</span>
+            <span class="s-err">🐛 Error</span>
+          </div>
+        </div>
+        <div class="body">
+<span class="pmt">brianr@mbp</span> <span class="nb">~/myrepo</span> <span class="pmt">%</span> npm test src/auth/login.test.ts<br>
+<span class="r"> FAIL</span>  src/auth/login.test.ts<br>
+&nbsp;&nbsp;● <span class="w">TypeError: Cannot read properties of undefined</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="r">(reading 'user')</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

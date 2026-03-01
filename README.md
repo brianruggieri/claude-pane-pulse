@@ -6,14 +6,17 @@
 [![macOS](https://img.shields.io/badge/macOS-Sonoma+-blue.svg)](https://www.apple.com/macos/)
 [![Bash](https://img.shields.io/badge/bash-3.2+-green.svg)](https://www.gnu.org/software/bash/)
 
-Claude Pane Pulse automatically updates your terminal pane titles to show real-time status of your Claude Code sessions - building, testing, pushing, and more - so you always know what each agent is working on at a glance.
+Claude Pane Pulse automatically updates your terminal pane titles to show real-time status of your Claude Code sessions — building, testing, pushing, and more — so you always know what each agent is working on at a glance.
 
-```
-PR #89 - Fix auth | 🧪 Testing...
-Issue #12 - API | ⬆️ Pushing
-Feature: OAuth | ✅ Tests passed
-Bug: Login crash | 💭 Thinking
-```
+![claude-pane-pulse demo](demo-assets/hero-animated.gif)
+
+## Before & After
+
+| Without `ccp` | With `ccp` |
+|:---:|:---:|
+| ![Before: all panes show "bash"](demo-assets/screenshot-before.png) | ![After: dynamic status in each pane](demo-assets/screenshot-after.png) |
+
+Every pane shows "bash". Hard to track which session is testing, which one errored. → Each pane title updates in real time: `PR #89 — Fix auth · ✅ Tests passed`.
 
 ## ✨ Features
 
@@ -129,16 +132,7 @@ Idle:        "PR #89 | 💤 Idle"
 
 Perfect for running multiple Claude Code instances:
 
-```bash
-# Terminal split layout
-┌─────────────────┬─────────────────┐
-│  PR #89         │ Issue #12       │
-│  🧪 Testing...  │ ✅ Tests passed │
-├─────────────────┼─────────────────┤
-│  Feature: Auth  │ Bug: Crash      │
-│  💭 Thinking    │ 🐛 Error        │
-└─────────────────┴─────────────────┘
-```
+![4-pane workflow with dynamic titles](demo-assets/screenshot-after.png)
 
 Launch multiple sessions:
 ```bash
