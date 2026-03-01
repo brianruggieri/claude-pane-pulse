@@ -174,16 +174,18 @@ monitor_claude_output() {
     # Run Claude Code in a PTY using macOS 'script'.
     # Piping claude's stdout (the old approach) makes it detect a non-TTY
     # and error with "Input must be provided via stdin or --print".
-    # 'script -q -F pipe' allocates a real PTY so claude runs interactively
-    # while simultaneously writing output to our FIFO for title monitoring.
-    # /dev/null discards the permanent typescript log.
-    local claude_cmd
+    # 'script -q -F pipe typescript cmd' allocates a real PTY so claude runs
+    # interactively while simultaneously writing output to our FIFO for
+    # title monitoring. The typescript file is a temp file we delete on exit
+    # (script requires a real writable path; /dev/null is not accepted).
+    local claude_cmd typescript
     claude_cmd=$(get_claude_cmd)
-    script -q -F "${pipe}" /dev/null "${claude_cmd}"
+    typescript=$(mktemp "${STATE_DIR}/typescript.XXXXXX")
+    script -q -F "${pipe}" "${typescript}" "${claude_cmd}"
 
     # Cleanup
     kill "${monitor_pid}" 2>/dev/null || true
-    rm -f "${pipe}"
+    rm -f "${pipe}" "${typescript}"
 }
 
 cleanup_monitor() {
