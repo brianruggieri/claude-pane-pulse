@@ -15,6 +15,7 @@ source "${_MONITOR_SCRIPT_DIR}/title.sh"
 # Status priority levels (higher = more important)
 # 🐛 Error          = 100
 # ❌ Tests failed   = 90
+# ⏳ Waiting        = 85  (active op silent >2 min — likely blocked on input)
 # 🔨 Building       = 80
 # 🧪 Testing        = 80
 # 📦 Installing     = 80
@@ -106,8 +107,8 @@ animate_status() {
     local status="$1"
     local frame="$2"
 
-    # Only animate in-progress operations (not completions or errors)
-    if [[ "${status}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking) ]]; then
+    # Animate in-progress and waiting states (not completions or errors)
+    if [[ "${status}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Waiting) ]]; then
         local dots=""
         case $((frame % 4)) in
             0) dots="" ;;
@@ -121,10 +122,37 @@ animate_status() {
     fi
 }
 
+# _hook_key: stable identifier for the hook signal file.
+# Returns $TMUX_PANE when in tmux, or the TTY device path (slashes → dashes).
+# Returns empty string when neither is available (no hook integration).
+_hook_key() {
+    if [[ -n "${TMUX_PANE:-}" ]]; then
+        echo "${TMUX_PANE}"
+        return
+    fi
+    local tty_path
+    tty_path=$(tty 2>/dev/null) || true
+    if [[ "${tty_path}" == /dev/* ]]; then
+        echo "${tty_path}" | tr '/' '-'
+    fi
+    # empty string: hook integration unavailable (e.g. in test/pipe context)
+}
+
 # monitor_claude_output: run Claude Code with real-time title updates
 monitor_claude_output() {
     local base_title="$1"
     local pipe="${STATE_DIR}/pipe.$$"
+
+    # Hook signal file: `ccp --hook-state` writes here; monitor loop reads it.
+    # hook_file is empty when no TTY/TMUX_PANE is available (e.g. in tests).
+    local hook_key hook_file
+    hook_key=$(_hook_key)
+    if [[ -n "${hook_key}" ]]; then
+        hook_file="${STATE_DIR}/hook.${hook_key}"
+        rm -f "${hook_file}"  # clear any stale signal from a previous session
+    else
+        hook_file=""
+    fi
 
     # Create named pipe for output monitoring
     mkfifo "${pipe}" 2>/dev/null || true
@@ -137,8 +165,9 @@ monitor_claude_output() {
     #   >128   = 1-second timeout (no data) — heartbeat tick
     #   1      = EOF (write end of pipe closed, claude has exited)
     (
-        local current_priority=0 last_update frame_counter=0 current_context=""
+        local current_priority=0 last_update last_output_time frame_counter=0 current_context=""
         last_update=$(date +%s)
+        last_output_time="${last_update}"
         local esc
         esc=$(printf '\033')
 
@@ -154,11 +183,21 @@ monitor_claude_output() {
                 # Got a line — strip ANSI and extract status context
                 line=$(printf '%s' "${line}" | sed "s/${esc}\[[0-9;]*[a-zA-Z]//g" | tr -d '\r')
                 if [[ -n "${line}" ]]; then
-                    local result new_context new_priority current_time
+                    local current_time
+                    current_time=$(date +%s)
+                    last_output_time="${current_time}"
+
+                    # Any output after a Waiting state means claude is active again;
+                    # reset priority so output-derived states can flow through.
+                    if [[ "${current_context}" = "⏳ Waiting" ]]; then
+                        current_context=""
+                        current_priority=0
+                    fi
+
+                    local result new_context new_priority
                     result=$(extract_context "${line}")
                     new_context="${result%|*}"
                     new_priority="${result#*|}"
-                    current_time=$(date +%s)
 
                     # Completion events always show, even if their numeric
                     # priority is lower than the current active state.
@@ -188,9 +227,54 @@ monitor_claude_output() {
                 local current_time
                 current_time=$(date +%s)
 
+                # ── Finding 1: hook fast-path ──────────────────────────────────
+                # Consume any signal written by `ccp --hook-state`.
+                if [[ -n "${hook_file}" && -f "${hook_file}" ]]; then
+                    local hook_state
+                    hook_state=$(cat "${hook_file}" 2>/dev/null || echo "")
+                    rm -f "${hook_file}"
+                    case "${hook_state}" in
+                        running)
+                            # New user prompt submitted; clear stale Waiting/Idle
+                            # so the upcoming output states show immediately.
+                            last_output_time="${current_time}"
+                            last_update="${current_time}"
+                            if [[ "${current_context}" = "⏳ Waiting" || \
+                                  "${current_context}" = "💤 Idle" ]]; then
+                                current_context=""
+                                current_priority=0
+                            fi
+                            ;;
+                        needs-input)
+                            # Blocked on a permission prompt or similar.
+                            current_context="⏳ Waiting"
+                            current_priority=85
+                            last_update="${current_time}"
+                            ;;
+                        done)
+                            # Claude finished; transition to idle.
+                            current_context="💤 Idle"
+                            current_priority=10
+                            last_update="${current_time}"
+                            ;;
+                    esac
+                fi
+
+                # ── Finding 3: silence-based Waiting detection ─────────────────
+                # If an active op has had no output for >2 min, claude is likely
+                # blocked on a permission prompt. We know it's still alive because
+                # we'd have received FIFO EOF if it had exited.
+                local silence=$(( current_time - last_output_time ))
+                if [[ "${silence}" -gt 120 ]] && \
+                   [[ "${current_priority}" -ge 70 ]] && \
+                   [[ "${current_context}" != "⏳ Waiting" ]]; then
+                    current_context="⏳ Waiting"
+                    current_priority=85
+                    last_update="${current_time}"
+
                 # Reset to idle after 60s of no significant activity
-                if [[ $((current_time - last_update)) -gt 60 ]] && \
-                   [[ "${current_priority}" -gt 10 ]]; then
+                elif [[ $((current_time - last_update)) -gt 60 ]] && \
+                     [[ "${current_priority}" -gt 10 ]]; then
                     current_priority=10
                     current_context="💤 Idle"
                     last_update="${current_time}"
@@ -200,10 +284,11 @@ monitor_claude_output() {
                 break
             fi
 
-            # Re-assert title on every iteration (new data OR heartbeat tick)
+            # Re-assert title and border on every iteration (data OR heartbeat)
             local animated_status
             animated_status=$(animate_status "${current_context}" "${frame_counter}")
             update_title_with_context "${base_title}" "${animated_status}"
+            update_pane_border "${current_context}"
             [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 4 ))
         done
     ) < "${pipe}" &
@@ -230,10 +315,12 @@ monitor_claude_output() {
         "${claude_cmd}"
     fi
 
-    # Cleanup: kill the monitor, then wait to suppress bash's "Terminated" message
+    # Cleanup: kill the monitor, restore border, clear hook signal file
     kill "${monitor_pid}" 2>/dev/null || true
     wait "${monitor_pid}" 2>/dev/null || true
     rm -f "${pipe}"
+    [[ -n "${hook_file}" ]] && rm -f "${hook_file}"
+    restore_pane_border
 }
 
 cleanup_monitor() {
@@ -245,9 +332,16 @@ cleanup_monitor() {
         wait "${monitor_pid}" 2>/dev/null || true
         rm -f "${monitor_pid_file}"
     fi
+
+    # Restore pane border (idempotent) and clean up hook signal file
+    restore_pane_border
+    local hook_key
+    hook_key=$(_hook_key)
+    [[ -n "${hook_key}" ]] && rm -f "${STATE_DIR}/hook.${hook_key}"
 }
 
 export -f extract_context
 export -f animate_status
+export -f _hook_key
 export -f monitor_claude_output
 export -f cleanup_monitor

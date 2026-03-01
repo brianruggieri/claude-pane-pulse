@@ -52,6 +52,7 @@ ${BLUE}Options:${NC}
     --no-dynamic            Disable dynamic updates (static title)
     --continue TITLE        Resume session by title search
     --list, -l              List all active sessions
+    --hook-state STATE      Signal hook state (running|needs-input|done)
     --help, -h              Show this help
     --version, -v           Show version
 
@@ -59,13 +60,16 @@ ${BLUE}Features:${NC}
     • Dynamic status updates (Building, Testing, Pushing, etc.)
     • Animated progress indicators
     • Priority-based status display
+    • tmux pane border coloring (red/yellow/green by status)
+    • ⏳ Waiting detection when Claude is blocked on input
     • Session tracking and resumption
     • Auto-detection from git branches
+    • Optional Claude Code hook integration (see docs/hooks.md)
 
 ${BLUE}Status Icons:${NC}
     🔨 Building    🧪 Testing     ✅ Tests passed    ❌ Tests failed
     💾 Committed   ⬆️ Pushing     📦 Installing      💭 Thinking
-    🐛 Error       💤 Idle        🐳 Docker          🔀 Merging
+    🐛 Error       ⏳ Waiting     💤 Idle             🐳 Docker
 
 For more info: https://github.com/brianruggieri/claude-pane-pulse
 EOF
@@ -135,6 +139,24 @@ main() {
                     exit 1
                 fi
                 list_sessions
+                exit 0
+                ;;
+            --hook-state)
+                # Signal a running ccp monitor from a Claude Code hook.
+                # Writes a state file read by the monitor's heartbeat loop.
+                shift
+                local hook_state="${1:-}"
+                if [[ -z "${hook_state}" ]]; then
+                    log_error "Usage: ${SCRIPT_NAME} --hook-state <running|needs-input|done>"
+                    exit 1
+                fi
+                local hook_key
+                if [[ -n "${TMUX_PANE:-}" ]]; then
+                    hook_key="${TMUX_PANE}"
+                else
+                    hook_key=$(tty 2>/dev/null | tr '/' '-' | tr -d '\n')
+                fi
+                echo "${hook_state}" > "${STATE_DIR}/hook.${hook_key}"
                 exit 0
                 ;;
             --no-dynamic)
