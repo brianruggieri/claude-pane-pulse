@@ -158,12 +158,27 @@ monitor_claude_output() {
                     new_priority="${result#*|}"
                     current_time=$(date +%s)
 
+                    # Completion events always show, even if their numeric
+                    # priority is lower than the current active state.
+                    # e.g. "✅ Tests passed" (60) must override "🧪 Testing" (80).
+                    local is_completion=0
+                    if [[ "${new_context}" =~ (Tests\ passed|Tests\ failed|Committed) ]]; then
+                        is_completion=1
+                    fi
+
                     if [[ -n "${new_context}" ]] && \
-                       { [[ "${new_priority}" -ge "${current_priority}" ]] || \
+                       { [[ "${is_completion}" -eq 1 ]] || \
+                         [[ "${new_priority}" -ge "${current_priority}" ]] || \
                          [[ $((current_time - last_update)) -gt 60 ]]; }; then
                         current_priority="${new_priority}"
                         current_context="${new_context}"
                         last_update="${current_time}"
+
+                        # Completion events reset the priority accumulator to 0
+                        # so the next operation isn't blocked by a prior state.
+                        if [[ "${is_completion}" -eq 1 ]]; then
+                            current_priority=0
+                        fi
                     fi
                 fi
             elif [[ ${read_status} -gt 128 ]]; then

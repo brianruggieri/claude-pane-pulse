@@ -60,8 +60,13 @@ check_dependencies() {
     return 0
 }
 
-# get_claude_cmd: return the available claude command
+# get_claude_cmd: return the available claude command.
+# CCP_CLAUDE_CMD env var overrides for testing (e.g. pointing at mock-claude.sh).
 get_claude_cmd() {
+    if [[ -n "${CCP_CLAUDE_CMD:-}" ]]; then
+        echo "${CCP_CLAUDE_CMD}"
+        return
+    fi
     if command -v claude &> /dev/null; then
         echo "claude"
     elif command -v claude-code &> /dev/null; then

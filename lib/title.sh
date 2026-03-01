@@ -19,6 +19,11 @@ set_title() {
         tmux set-window-option -q automatic-rename off 2>/dev/null || true
         tmux rename-window "${title}" 2>/dev/null || true
     fi
+
+    # CCP_TITLE_LOG: append each title to a log file (used by e2e tests)
+    if [[ -n "${CCP_TITLE_LOG:-}" ]]; then
+        echo "${title}" >> "${CCP_TITLE_LOG}"
+    fi
 }
 
 # update_title_with_context: combine base title with a status context string
