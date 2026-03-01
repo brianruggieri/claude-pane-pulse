@@ -127,46 +127,69 @@ monitor_claude_output() {
     # Create named pipe for output monitoring
     mkfifo "${pipe}" 2>/dev/null || true
 
-    # Background process: read from the FIFO, strip ANSI codes, update title
+    # Background process: read from the FIFO, strip ANSI codes, update title.
+    # Uses read -t 1 so we heartbeat the title every second even when output
+    # is quiet. This prevents Claude Code's TUI from permanently overriding
+    # the pane title we set. read exit status semantics:
+    #   0      = line read successfully
+    #   >128   = 1-second timeout (no data) — heartbeat tick
+    #   1      = EOF (write end of pipe closed, claude has exited)
     (
-        local current_priority=0 last_update frame_counter=0
+        local current_priority=0 last_update frame_counter=0 current_context=""
         last_update=$(date +%s)
-        # Escape character for ANSI stripping (portable across macOS sed)
         local esc
         esc=$(printf '\033')
 
-        while IFS= read -r line; do
-            # Strip ANSI/VT100 escape sequences so patterns match plain text
-            line=$(printf '%s' "${line}" | sed "s/${esc}\[[0-9;]*[a-zA-Z]//g" | tr -d '\r')
-            [[ -z "${line}" ]] && continue
+        # Assert base title once before Claude Code starts its TUI
+        update_title_with_context "${base_title}" ""
 
-            local result new_context new_priority current_time
-            result=$(extract_context "${line}")
-            new_context="${result%|*}"
-            new_priority="${result#*|}"
-            current_time=$(date +%s)
+        while true; do
+            local line read_status
+            IFS= read -r -t 1 line
+            read_status=$?
 
-            if [[ -n "${new_context}" ]] && \
-               { [[ "${new_priority}" -ge "${current_priority}" ]] || \
-                 [[ $((current_time - last_update)) -gt 60 ]]; }; then
-                current_priority="${new_priority}"
-                last_update="${current_time}"
+            if [[ ${read_status} -eq 0 ]]; then
+                # Got a line — strip ANSI and extract status context
+                line=$(printf '%s' "${line}" | sed "s/${esc}\[[0-9;]*[a-zA-Z]//g" | tr -d '\r')
+                if [[ -n "${line}" ]]; then
+                    local result new_context new_priority current_time
+                    result=$(extract_context "${line}")
+                    new_context="${result%|*}"
+                    new_priority="${result#*|}"
+                    current_time=$(date +%s)
 
-                local animated_status
-                animated_status=$(animate_status "${new_context}" "${frame_counter}")
-                update_title_with_context "${base_title}" "${animated_status}"
-                frame_counter=$(( (frame_counter + 1) % 4 ))
+                    if [[ -n "${new_context}" ]] && \
+                       { [[ "${new_priority}" -ge "${current_priority}" ]] || \
+                         [[ $((current_time - last_update)) -gt 60 ]]; }; then
+                        current_priority="${new_priority}"
+                        current_context="${new_context}"
+                        last_update="${current_time}"
+                    fi
+                fi
+            elif [[ ${read_status} -gt 128 ]]; then
+                # 1-second timeout — heartbeat tick
+                local current_time
+                current_time=$(date +%s)
+
+                # Reset to idle after 60s of no significant activity
+                if [[ $((current_time - last_update)) -gt 60 ]] && \
+                   [[ "${current_priority}" -gt 10 ]]; then
+                    current_priority=10
+                    current_context="💤 Idle"
+                    last_update="${current_time}"
+                fi
+            else
+                # EOF: write end of pipe closed (claude has exited)
+                break
             fi
 
-            # Reset to idle after 60s with no significant activity
-            current_time=$(date +%s)
-            if [[ $((current_time - last_update)) -gt 60 ]] && \
-               [[ "${current_priority}" -gt 10 ]]; then
-                current_priority=10
-                update_title_with_context "${base_title}" "💤 Idle"
-            fi
-        done < "${pipe}"
-    ) &
+            # Re-assert title on every iteration (new data OR heartbeat tick)
+            local animated_status
+            animated_status=$(animate_status "${current_context}" "${frame_counter}")
+            update_title_with_context "${base_title}" "${animated_status}"
+            [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 4 ))
+        done
+    ) < "${pipe}" &
 
     local monitor_pid=$!
     echo "${monitor_pid}" > "${STATE_DIR}/monitor.$$.pid"
