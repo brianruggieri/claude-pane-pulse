@@ -7,16 +7,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LIB_DIR="${PROJECT_DIR}/lib"
 
-# Source libraries (with a temp STATE_DIR so tests don't touch ~/.config)
-export STATE_DIR
-STATE_DIR=$(mktemp -d)
-export SESSION_FILE="${STATE_DIR}/sessions.json"
-echo '[]' > "${SESSION_FILE}"
-
+# Source libraries first (core.sh sets STATE_DIR to the real ~/.config path),
+# then override with a temp dir so tests never touch ~/.config
 source "${LIB_DIR}/core.sh"
 source "${LIB_DIR}/title.sh"
 source "${LIB_DIR}/session.sh"
 source "${LIB_DIR}/monitor.sh"
+
+STATE_DIR=$(mktemp -d)
+SESSION_FILE="${STATE_DIR}/sessions.json"
+export STATE_DIR SESSION_FILE
+echo '[]' > "${SESSION_FILE}"
 
 # ── Test framework ────────────────────────────────────────────────────────────
 
