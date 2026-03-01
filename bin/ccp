@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+# ccp - Claude Pane Pulse: Dynamic terminal title manager for Claude Code
+# Version: 1.0.0
+
+set -euo pipefail
+
+# Determine script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(cd "${SCRIPT_DIR}/../lib" && pwd)"
+
+# Source libraries
+# shellcheck source=lib/core.sh
+source "${LIB_DIR}/core.sh"
+# shellcheck source=lib/title.sh
+source "${LIB_DIR}/title.sh"
+# shellcheck source=lib/session.sh
+source "${LIB_DIR}/session.sh"
+# shellcheck source=lib/monitor.sh
+source "${LIB_DIR}/monitor.sh"
+
+show_help() {
+    cat << EOF
+${GREEN}Claude Pane Pulse${NC} v${VERSION} - Dynamic terminal titles for Claude Code
+
+${BLUE}Usage:${NC}
+    ${SCRIPT_NAME} [OPTIONS] [TITLE] [DIRECTORY]
+
+${BLUE}Examples:${NC}
+    ${SCRIPT_NAME} "PR #89 - Fix auth bug"
+    ${SCRIPT_NAME} "Issue #12" ~/projects/auth
+    ${SCRIPT_NAME} --pr 89 "Fix bug"
+    ${SCRIPT_NAME} --auto-title
+    ${SCRIPT_NAME} --list
+
+${BLUE}Quick Formats:${NC}
+    --pr NUMBER DESC        PR #NUMBER - DESC
+    --issue NUMBER DESC     Issue #NUMBER - DESC
+    --feature DESC          Feature: DESC
+    --bug DESC              Bug: DESC
+    --refactor DESC         Refactor: DESC
+
+${BLUE}Options:${NC}
+    --auto-title            Auto-detect title from git branch
+    --no-dynamic            Disable dynamic updates (static title)
+    --continue TITLE        Resume session by title search
+    --list, -l              List all active sessions
+    --help, -h              Show this help
+    --version, -v           Show version
+
+${BLUE}Features:${NC}
+    • Dynamic status updates (Building, Testing, Pushing, etc.)
+    • Animated progress indicators
+    • Priority-based status display
+    • Session tracking and resumption
+    • Auto-detection from git branches
+
+${BLUE}Status Icons:${NC}
+    🔨 Building    🧪 Testing     ✅ Tests passed    ❌ Tests failed
+    💾 Committed   ⬆️ Pushing     📦 Installing      💭 Thinking
+    🐛 Error       💤 Idle        🐳 Docker          🔀 Merging
+
+For more info: https://github.com/brianruggieri/claude-pane-pulse
+EOF
+}
+
+show_version() {
+    echo "ccp version ${VERSION}"
+}
+
+auto_detect_title() {
+    local title=""
+
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        local branch
+        branch=$(git branch --show-current 2>/dev/null || echo "")
+
+        if [[ -n "${branch}" ]]; then
+            if [[ "${branch}" =~ ^(pr|pull|PR)/([0-9]+) ]]; then
+                local pr_num="${BASH_REMATCH[2]}"
+                local desc
+                desc=$(echo "${branch}" | sed -E 's/^[^/]+\/[0-9]+[-_]?//' | tr '-_' ' ')
+                title="PR #${pr_num} - ${desc}"
+            elif [[ "${branch}" =~ ^(issue|fix|bug)/([0-9]+) ]]; then
+                local issue_num="${BASH_REMATCH[2]}"
+                local desc
+                desc=$(echo "${branch}" | sed -E 's/^[^/]+\/[0-9]+[-_]?//' | tr '-_' ' ')
+                title="Issue #${issue_num} - ${desc}"
+            elif [[ "${branch}" =~ ^feature/ ]]; then
+                local desc
+                desc=$(echo "${branch}" | sed 's/^feature\///' | tr '-_' ' ')
+                title="Feature: ${desc}"
+            else
+                title="Branch: ${branch}"
+            fi
+        fi
+    fi
+
+    if [[ -z "${title}" ]]; then
+        title="Dev: $(basename "${PWD}")"
+    fi
+
+    echo "${title}"
+}
+
+main() {
+    local title=""
+    local directory="${PWD}"
+    local enable_dynamic=true
+    local auto_title=false
+
+    # Initialize state directory
+    init_state_dir
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            --version|-v)
+                show_version
+                exit 0
+                ;;
+            --list|-l)
+                list_sessions
+                exit 0
+                ;;
+            --no-dynamic)
+                enable_dynamic=false
+                shift
+                ;;
+            --auto-title)
+                auto_title=true
+                shift
+                ;;
+            --pr)
+                shift
+                local pr_num="$1"
+                shift
+                title="PR #${pr_num} - $1"
+                shift
+                ;;
+            --issue)
+                shift
+                local issue_num="$1"
+                shift
+                title="Issue #${issue_num} - $1"
+                shift
+                ;;
+            --feature)
+                shift
+                title="Feature: $1"
+                shift
+                ;;
+            --bug)
+                shift
+                title="Bug: $1"
+                shift
+                ;;
+            --refactor)
+                shift
+                title="Refactor: $1"
+                shift
+                ;;
+            --continue)
+                shift
+                local search="$1"
+                directory=$(find_session "${search}")
+                if [[ -z "${directory}" ]]; then
+                    log_warning "Could not find session matching '${search}'"
+                    echo "Available sessions:"
+                    list_sessions
+                    exit 1
+                fi
+                title="${search}"
+                shift
+                ;;
+            *)
+                if [[ -z "${title}" ]]; then
+                    title="$1"
+                elif [[ -d "$1" ]]; then
+                    directory="$1"
+                else
+                    title="${title} $1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    # Auto-detect title if requested
+    if [[ "${auto_title}" = true ]] && [[ -z "${title}" ]]; then
+        title=$(auto_detect_title)
+        log_info "Auto-detected: ${title}"
+    fi
+
+    # Prompt for title if none provided
+    if [[ -z "${title}" ]]; then
+        local detected
+        detected=$(auto_detect_title)
+        echo -e "${BLUE}Auto-detected:${NC} ${detected}"
+        echo -n "Press Enter to use this, or type custom title: "
+        read -r custom_title
+        title="${custom_title:-${detected}}"
+    fi
+
+    # Check dependencies
+    if ! check_dependencies; then
+        exit 1
+    fi
+
+    # Setup cleanup on exit
+    trap 'cleanup_session; cleanup_monitor' EXIT
+
+    # Set initial title and save session
+    set_title "${title}"
+    save_session "${title}" "${directory}"
+
+    # Show startup status
+    log_success "Starting: ${title}"
+    log_info "Directory: ${directory}"
+    if [[ "${enable_dynamic}" = true ]]; then
+        log_info "Dynamic titles: ${GREEN}enabled${NC}"
+    fi
+    echo ""
+
+    # Change to target directory
+    cd "${directory}"
+
+    # Launch Claude Code
+    if [[ "${enable_dynamic}" = true ]]; then
+        monitor_claude_output "${title}"
+    else
+        local claude_cmd
+        claude_cmd=$(get_claude_cmd)
+        "${claude_cmd}"
+    fi
+}
+
+main "$@"
