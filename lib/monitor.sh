@@ -38,8 +38,11 @@ extract_context() {
     local context=""
     local priority=0
 
-    # Error states (highest priority)
-    if [[ "${line}" =~ (Error|Failed|Exception|Traceback|FAILED) ]]; then
+    # Error states (highest priority) — anchor to line-start/word boundaries to reduce false positives
+    if [[ "${line}" =~ ^(Error|error): || \
+          "${line}" =~ ^(Exception|Traceback) || \
+          "${line}" =~ ^FAILED || \
+          "${line}" =~ [[:space:]]FAILED ]]; then
         context="🐛 Error"
         priority=100
 
@@ -122,7 +125,6 @@ animate_status() {
 monitor_claude_output() {
     local base_title="$1"
     local pipe="${STATE_DIR}/pipe.$$"
-    local frame=0
 
     # Create named pipe for output monitoring
     mkfifo "${pipe}" 2>/dev/null || true

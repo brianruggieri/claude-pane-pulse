@@ -17,15 +17,12 @@ save_session() {
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
     local session
-    session=$(cat <<SESSIONEOF
-{
-    "title": "${title}",
-    "directory": "${directory}",
-    "started": "${timestamp}",
-    "pid": $$
-}
-SESSIONEOF
-)
+    session=$(jq -n \
+        --arg title "${title}" \
+        --arg directory "${directory}" \
+        --arg started "${timestamp}" \
+        --argjson pid $$ \
+        '{title: $title, directory: $directory, started: $started, pid: $pid}')
 
     local sessions
     sessions=$(cat "${SESSION_FILE}")
@@ -39,9 +36,19 @@ list_sessions() {
         return
     fi
 
-    local sessions count
+    # Build a live-sessions list by checking each stored PID
+    local sessions live_sessions count
     sessions=$(cat "${SESSION_FILE}")
-    count=$(echo "${sessions}" | jq 'length')
+    live_sessions="[]"
+    while IFS= read -r entry; do
+        local pid
+        pid=$(echo "${entry}" | jq -r '.pid')
+        if kill -0 "${pid}" 2>/dev/null; then
+            live_sessions=$(echo "${live_sessions}" | jq --argjson e "${entry}" '. += [$e]')
+        fi
+    done < <(echo "${sessions}" | jq -c '.[]')
+
+    count=$(echo "${live_sessions}" | jq 'length')
 
     if [[ "${count}" -eq 0 ]]; then
         echo "No active sessions."
@@ -49,7 +56,7 @@ list_sessions() {
     fi
 
     echo -e "${BLUE}Active Sessions:${NC}\n"
-    echo "${sessions}" | jq -r '.[] | "  • \(.title)\n    Dir: \(.directory)\n    Started: \(.started)\n"'
+    echo "${live_sessions}" | jq -r '.[] | "  • \(.title)\n    Dir: \(.directory)\n    Started: \(.started)\n"'
 }
 
 find_session() {
@@ -59,6 +66,19 @@ find_session() {
     sessions=$(cat "${SESSION_FILE}")
     result=$(echo "${sessions}" | jq -r --arg search "${search}" '
         .[] | select(.title | contains($search)) | .directory
+    ' | head -n 1)
+
+    echo "${result}"
+}
+
+# find_session_title: return the stored title for the first session matching search
+find_session_title() {
+    local search="$1"
+    local sessions result
+
+    sessions=$(cat "${SESSION_FILE}")
+    result=$(echo "${sessions}" | jq -r --arg search "${search}" '
+        .[] | select(.title | contains($search)) | .title
     ' | head -n 1)
 
     echo "${result}"
@@ -78,4 +98,5 @@ cleanup_session() {
 export -f save_session
 export -f list_sessions
 export -f find_session
+export -f find_session_title
 export -f cleanup_session
