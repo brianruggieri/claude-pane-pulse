@@ -20,9 +20,11 @@ set_title() {
         tmux rename-window "${title}" 2>/dev/null || true
     fi
 
-    # CCP_TITLE_LOG: append each title to a log file (used by e2e tests)
+    # CCP_TITLE_LOG: append each title to a log file (used by e2e tests).
+    # Use || true so a bad/unwritable path never terminates ccp under set -e.
     if [[ -n "${CCP_TITLE_LOG:-}" ]]; then
-        echo "${title}" >> "${CCP_TITLE_LOG}"
+        mkdir -p -- "$(dirname -- "${CCP_TITLE_LOG}")" 2>/dev/null || true
+        echo "${title}" >> "${CCP_TITLE_LOG}" 2>/dev/null || true
     fi
 }
 

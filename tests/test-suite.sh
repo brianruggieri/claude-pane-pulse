@@ -160,6 +160,39 @@ cleanup_session
 session_count_after=$(jq 'length' "${SESSION_FILE}")
 assert_equals "cleanup_session removes current pid" "0" "${session_count_after}"
 
+# find_session_title
+echo '[]' > "${SESSION_FILE}"
+save_session "Auth Feature" "/tmp/auth"
+found_title=$(find_session_title "Auth")
+assert_equals "find_session_title returns title" "Auth Feature" "${found_title}"
+
+not_found_title=$(find_session_title "Nonexistent" 2>/dev/null || true)
+assert_empty "find_session_title returns empty for no match" "${not_found_title}"
+
+cleanup_session
+
+# PID-liveness filtering: dead PIDs must not appear in list/find output
+echo '[]' > "${SESSION_FILE}"
+# Inject a fake session with an impossible PID (999999999 is never a valid pid)
+echo '[{"title":"Dead Session","directory":"/tmp/dead","started":"2026-01-01T00:00:00Z","pid":999999999}]' \
+    > "${SESSION_FILE}"
+save_session "Live Session" "/tmp/live"
+
+list_output=$(list_sessions 2>/dev/null)
+assert_contains "list_sessions shows live sessions"    "Live Session"  "${list_output}"
+# dead session should not appear
+dead_in_list=0
+if echo "${list_output}" | grep -q "Dead Session"; then dead_in_list=1; fi
+assert_equals "list_sessions hides dead sessions" "0" "${dead_in_list}"
+
+dead_dir=$(find_session "Dead" 2>/dev/null || true)
+assert_empty "find_session ignores dead sessions" "${dead_dir}"
+
+dead_title=$(find_session_title "Dead" 2>/dev/null || true)
+assert_empty "find_session_title ignores dead sessions" "${dead_title}"
+
+cleanup_session
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 rm -rf "${STATE_DIR}"

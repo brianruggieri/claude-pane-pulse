@@ -62,10 +62,23 @@ check_dependencies() {
 
 # get_claude_cmd: return the available claude command.
 # CCP_CLAUDE_CMD env var overrides for testing (e.g. pointing at mock-claude.sh).
+# The override is only accepted if the command/path is actually executable.
 get_claude_cmd() {
     if [[ -n "${CCP_CLAUDE_CMD:-}" ]]; then
-        echo "${CCP_CLAUDE_CMD}"
-        return
+        if [[ "${CCP_CLAUDE_CMD}" == *"/"* ]]; then
+            # Looks like a path — require it to be executable
+            if [[ -x "${CCP_CLAUDE_CMD}" ]]; then
+                echo "${CCP_CLAUDE_CMD}"
+                return
+            fi
+        else
+            # Plain command name — require it to resolve via PATH
+            if command -v "${CCP_CLAUDE_CMD}" &> /dev/null; then
+                echo "${CCP_CLAUDE_CMD}"
+                return
+            fi
+        fi
+        # CCP_CLAUDE_CMD set but not executable; fall through to normal detection
     fi
     if command -v claude &> /dev/null; then
         echo "claude"

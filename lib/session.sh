@@ -30,25 +30,36 @@ save_session() {
     mv "${SESSION_FILE}.tmp" "${SESSION_FILE}"
 }
 
+# prune_dead_sessions: remove entries whose process is no longer running.
+# Rewrites SESSION_FILE in-place so all subsequent reads see only live sessions.
+prune_dead_sessions() {
+    [[ ! -f "${SESSION_FILE}" ]] && return
+
+    local sessions keep
+    sessions=$(cat "${SESSION_FILE}")
+    keep="[]"
+    while IFS= read -r entry; do
+        local pid
+        pid=$(echo "${entry}" | jq -r '.pid')
+        if kill -0 "${pid}" 2>/dev/null; then
+            keep=$(echo "${keep}" | jq --argjson e "${entry}" '. += [$e]')
+        fi
+    done < <(echo "${sessions}" | jq -c '.[]')
+
+    echo "${keep}" > "${SESSION_FILE}"
+}
+
 list_sessions() {
     if [[ ! -f "${SESSION_FILE}" ]]; then
         echo "No sessions found."
         return
     fi
 
-    # Build a live-sessions list by checking each stored PID
-    local sessions live_sessions count
-    sessions=$(cat "${SESSION_FILE}")
-    live_sessions="[]"
-    while IFS= read -r entry; do
-        local pid
-        pid=$(echo "${entry}" | jq -r '.pid')
-        if kill -0 "${pid}" 2>/dev/null; then
-            live_sessions=$(echo "${live_sessions}" | jq --argjson e "${entry}" '. += [$e]')
-        fi
-    done < <(echo "${sessions}" | jq -c '.[]')
+    prune_dead_sessions
 
-    count=$(echo "${live_sessions}" | jq 'length')
+    local sessions count
+    sessions=$(cat "${SESSION_FILE}")
+    count=$(echo "${sessions}" | jq 'length')
 
     if [[ "${count}" -eq 0 ]]; then
         echo "No active sessions."
@@ -56,12 +67,14 @@ list_sessions() {
     fi
 
     echo -e "${BLUE}Active Sessions:${NC}\n"
-    echo "${live_sessions}" | jq -r '.[] | "  • \(.title)\n    Dir: \(.directory)\n    Started: \(.started)\n"'
+    echo "${sessions}" | jq -r '.[] | "  • \(.title)\n    Dir: \(.directory)\n    Started: \(.started)\n"'
 }
 
 find_session() {
     local search="$1"
     local sessions result
+
+    prune_dead_sessions
 
     sessions=$(cat "${SESSION_FILE}")
     result=$(echo "${sessions}" | jq -r --arg search "${search}" '
@@ -75,6 +88,8 @@ find_session() {
 find_session_title() {
     local search="$1"
     local sessions result
+
+    prune_dead_sessions
 
     sessions=$(cat "${SESSION_FILE}")
     result=$(echo "${sessions}" | jq -r --arg search "${search}" '
@@ -96,6 +111,7 @@ cleanup_session() {
 }
 
 export -f save_session
+export -f prune_dead_sessions
 export -f list_sessions
 export -f find_session
 export -f find_session_title
