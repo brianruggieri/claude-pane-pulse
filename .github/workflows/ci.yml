@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: brew install shellcheck
+
+      - name: Run shellcheck on all shell files
+        run: |
+          shellcheck bin/ccp lib/*.sh install.sh uninstall.sh
+
+  test:
+    name: Test Suite
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install jq
+
+      - name: Run test suite
+        run: bash tests/test-suite.sh
+
+  install-smoke:
+    name: Install Smoke Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install jq
+
+      - name: Run installer
+        run: bash install.sh
+
+      - name: Verify ccp is runnable
+        run: |
+          ~/.local/share/ccp/bin/ccp --version
