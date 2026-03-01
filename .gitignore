@@ -1,0 +1,53 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Session data
+*.session
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Test artifacts
+tests/test-output/
+
+# Build artifacts (if any)
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Personal configuration
+config.local
+
+# Project-internal files (handoff docs, zip archives, orchestration state)
+HANDOFF.md
+PROJECT_SUMMARY.md
+*.zip
+.claude-flow/
+.claude/
