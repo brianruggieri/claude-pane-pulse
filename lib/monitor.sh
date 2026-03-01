@@ -190,8 +190,9 @@ monitor_claude_output() {
         "${claude_cmd}"
     fi
 
-    # Cleanup
+    # Cleanup: kill the monitor, then wait to suppress bash's "Terminated" message
     kill "${monitor_pid}" 2>/dev/null || true
+    wait "${monitor_pid}" 2>/dev/null || true
     rm -f "${pipe}"
 }
 
@@ -201,6 +202,7 @@ cleanup_monitor() {
         local monitor_pid
         monitor_pid=$(cat "${monitor_pid_file}")
         kill "${monitor_pid}" 2>/dev/null || true
+        wait "${monitor_pid}" 2>/dev/null || true
         rm -f "${monitor_pid_file}"
     fi
 }
