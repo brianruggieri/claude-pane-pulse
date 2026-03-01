@@ -127,10 +127,18 @@ monitor_claude_output() {
     # Create named pipe for output monitoring
     mkfifo "${pipe}" 2>/dev/null || true
 
-    # Background process: read from pipe, update title
+    # Background process: read from the FIFO, strip ANSI codes, update title
     (
+        local current_priority=0 last_update frame_counter=0
+        last_update=$(date +%s)
+        # Escape character for ANSI stripping (portable across macOS sed)
+        local esc
+        esc=$(printf '\033')
+
         while IFS= read -r line; do
-            echo "${line}"  # Pass through to terminal
+            # Strip ANSI/VT100 escape sequences so patterns match plain text
+            line=$(printf '%s' "${line}" | sed "s/${esc}\[[0-9;]*[a-zA-Z]//g" | tr -d '\r')
+            [[ -z "${line}" ]] && continue
 
             local result new_context new_priority current_time
             result=$(extract_context "${line}")
@@ -139,25 +147,23 @@ monitor_claude_output() {
             current_time=$(date +%s)
 
             if [[ -n "${new_context}" ]] && \
-               { [[ "${new_priority}" -ge "${CURRENT_PRIORITY}" ]] || \
-                 [[ $((current_time - LAST_UPDATE)) -gt 60 ]]; }; then
-                CURRENT_STATUS="${new_context}"
-                CURRENT_PRIORITY="${new_priority}"
-                LAST_UPDATE="${current_time}"
+               { [[ "${new_priority}" -ge "${current_priority}" ]] || \
+                 [[ $((current_time - last_update)) -gt 60 ]]; }; then
+                current_priority="${new_priority}"
+                last_update="${current_time}"
 
                 local animated_status
-                animated_status=$(animate_status "${CURRENT_STATUS}" "${frame}")
+                animated_status=$(animate_status "${new_context}" "${frame_counter}")
                 update_title_with_context "${base_title}" "${animated_status}"
-                frame=$(( (frame + 1) % 4 ))
+                frame_counter=$(( (frame_counter + 1) % 4 ))
             fi
 
             # Reset to idle after 60s with no significant activity
             current_time=$(date +%s)
-            if [[ $((current_time - LAST_UPDATE)) -gt 60 ]] && \
-               [[ "${CURRENT_PRIORITY}" -gt 10 ]]; then
-                CURRENT_STATUS="💤 Idle"
-                CURRENT_PRIORITY=10
-                update_title_with_context "${base_title}" "${CURRENT_STATUS}"
+            if [[ $((current_time - last_update)) -gt 60 ]] && \
+               [[ "${current_priority}" -gt 10 ]]; then
+                current_priority=10
+                update_title_with_context "${base_title}" "💤 Idle"
             fi
         done < "${pipe}"
     ) &
@@ -165,10 +171,15 @@ monitor_claude_output() {
     local monitor_pid=$!
     echo "${monitor_pid}" > "${STATE_DIR}/monitor.$$.pid"
 
-    # Run Claude Code with output routed through the monitor pipe
+    # Run Claude Code in a PTY using macOS 'script'.
+    # Piping claude's stdout (the old approach) makes it detect a non-TTY
+    # and error with "Input must be provided via stdin or --print".
+    # 'script -q -F pipe' allocates a real PTY so claude runs interactively
+    # while simultaneously writing output to our FIFO for title monitoring.
+    # /dev/null discards the permanent typescript log.
     local claude_cmd
     claude_cmd=$(get_claude_cmd)
-    "${claude_cmd}" 2>&1 | tee "${pipe}"
+    script -q -F "${pipe}" /dev/null "${claude_cmd}"
 
     # Cleanup
     kill "${monitor_pid}" 2>/dev/null || true
