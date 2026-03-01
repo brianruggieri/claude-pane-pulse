@@ -236,6 +236,11 @@ main() {
     # Change to target directory
     cd "${directory}"
 
+    # Prevent Claude Code from overriding our terminal title.
+    # Without this, Claude Code's TUI sets the title to "* Claude Code" on
+    # startup and wins any escape-sequence battle. With it, we own the title.
+    export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
+
     # Launch Claude Code
     if [[ "${enable_dynamic}" = true ]]; then
         monitor_claude_output "${title}"
