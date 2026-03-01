@@ -180,7 +180,7 @@ monitor_claude_output() {
     # (script requires a real writable path; /dev/null is not accepted).
     local claude_cmd typescript
     claude_cmd=$(get_claude_cmd)
-    typescript=$(mktemp "${STATE_DIR}/typescript.XXXXXX")
+    typescript=$(mktemp "/tmp/ccp-typescript.XXXXXX")
     script -q -F "${pipe}" "${typescript}" "${claude_cmd}"
 
     # Cleanup
