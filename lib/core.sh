@@ -35,8 +35,8 @@ check_dependencies() {
         missing_deps+=("jq")
     fi
 
-    # Accept either 'claude' or 'claude-code'
-    if ! command -v claude &> /dev/null && ! command -v claude-code &> /dev/null; then
+    # Accept either 'claude' or 'claude-code', or CCP_CLAUDE_CMD override (used in tests)
+    if [[ -z "$(get_claude_cmd)" ]]; then
         missing_deps+=("claude / claude-code")
     fi
 
