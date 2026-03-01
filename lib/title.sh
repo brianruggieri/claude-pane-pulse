@@ -14,6 +14,7 @@ set_title() {
 
     # tmux: pass the escape through the tmux passthrough sequence
     if [[ -n "${TMUX:-}" ]]; then
+        # shellcheck disable=SC1003
         printf '\033Ptmux;\033\033]0;%s\007\033\\' "${title}"
         tmux set-window-option -q automatic-rename off 2>/dev/null || true
         tmux rename-window "${title}" 2>/dev/null || true

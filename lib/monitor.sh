@@ -80,7 +80,7 @@ extract_context() {
         priority=70
 
     # Claude thinking/planning
-    elif [[ "${line}" =~ (Let me think|Planning|Analyzing|I'll) ]]; then
+    elif [[ "${line}" =~ Planning|Analyzing ]]; then
         context="💭 Thinking"
         priority=70
 

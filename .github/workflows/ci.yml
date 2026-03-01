@@ -18,7 +18,7 @@ jobs:
 
       - name: Run shellcheck on all shell files
         run: |
-          shellcheck bin/ccp lib/*.sh install.sh uninstall.sh
+          shellcheck --severity=error bin/ccp lib/*.sh install.sh uninstall.sh
 
   test:
     name: Test Suite

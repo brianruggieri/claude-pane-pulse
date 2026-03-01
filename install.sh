@@ -63,13 +63,16 @@ echo -e "  ${GREEN}✓${NC} Symlink created: ${BIN_DIR}/ccp"
 
 add_path_to_profile() {
     local profile="$1"
+    # shellcheck disable=SC2016  # intentional: literal ${HOME} for user's shell profile
     local path_line='export PATH="${HOME}/bin:${PATH}"'
 
     if [[ -f "${profile}" ]]; then
         if ! grep -q 'HOME.*bin.*PATH\|PATH.*HOME.*bin' "${profile}" 2>/dev/null; then
-            echo "" >> "${profile}"
-            echo "# Added by claude-pane-pulse installer" >> "${profile}"
-            echo "${path_line}" >> "${profile}"
+            {
+                echo ""
+                echo "# Added by claude-pane-pulse installer"
+                echo "${path_line}"
+            } >> "${profile}"
             echo -e "  ${GREEN}✓${NC} Added ~/bin to PATH in ${profile}"
             return 0
         else
@@ -96,6 +99,7 @@ if [[ ":${PATH}:" != *":${BIN_DIR}:"* ]]; then
     if [[ "${added}" = false ]]; then
         echo -e "  ${YELLOW}⚠${NC} Could not find a shell profile to update."
         echo "  Add this line manually to your shell profile:"
+        # shellcheck disable=SC2016  # intentional: show literal ${HOME} to user
         echo '    export PATH="${HOME}/bin:${PATH}"'
     fi
 else
