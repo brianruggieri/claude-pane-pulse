@@ -25,19 +25,24 @@ source "${LIB_DIR}/title.sh"
 source "${LIB_DIR}/session.sh"
 # shellcheck source=lib/monitor.sh
 source "${LIB_DIR}/monitor.sh"
+# shellcheck source=lib/hooks.sh
+source "${LIB_DIR}/hooks.sh"
 
 show_help() {
     cat << EOF
 ${GREEN}Claude Pane Pulse${NC} v${VERSION} - Dynamic terminal titles for Claude Code
 
 ${BLUE}Usage:${NC}
-    ${SCRIPT_NAME} [OPTIONS] [TITLE] [DIRECTORY]
+    ${SCRIPT_NAME} [OPTIONS] [NOTE] [DIRECTORY]
+
+    With no arguments, the title is auto-detected from the git project name.
+    Pass a NOTE to use a custom message instead (e.g. your task or context).
 
 ${BLUE}Examples:${NC}
-    ${SCRIPT_NAME} "PR #89 - Fix auth bug"
-    ${SCRIPT_NAME} "Issue #12" ~/projects/auth
-    ${SCRIPT_NAME} --pr 89 "Fix bug"
-    ${SCRIPT_NAME} --auto-title
+    ${SCRIPT_NAME}                          # auto: project name
+    ${SCRIPT_NAME} "fixing the login bug"   # custom note as title
+    ${SCRIPT_NAME} --pr 89 "Fix auth"
+    ${SCRIPT_NAME} --auto-title             # same as no args
     ${SCRIPT_NAME} --list
 
 ${BLUE}Quick Formats:${NC}
@@ -77,6 +82,8 @@ show_version() {
 
 auto_detect_title() {
     local title=""
+    local project_name
+    project_name=$(basename "${PWD}")
 
     if git rev-parse --git-dir > /dev/null 2>&1; then
         local branch
@@ -98,13 +105,16 @@ auto_detect_title() {
                 desc=$(echo "${branch}" | sed 's/^feature\///' | tr '-_' ' ')
                 title="Feature: ${desc}"
             else
-                title="Branch: ${branch}"
+                # Plain branch (main, master, develop, etc.) — show the
+                # project name with branch.  Disambiguates from iTerm2's
+                # automatic directory prefix and makes multi-repo splits clear.
+                title="${project_name} (${branch})"
             fi
         fi
     fi
 
     if [[ -z "${title}" ]]; then
-        title="Dev: $(basename "${PWD}")"
+        title="${project_name}"
     fi
 
     echo "${title}"
@@ -114,7 +124,7 @@ main() {
     local title=""
     local directory="${PWD}"
     local enable_dynamic=true
-    local auto_title=false
+    local auto_title=true   # default: on — pass a title arg to override
 
     # Initialize state directory
     init_state_dir
@@ -208,20 +218,12 @@ main() {
         esac
     done
 
-    # Auto-detect title if requested
-    if [[ "${auto_title}" = true ]] && [[ -z "${title}" ]]; then
+    # Resolve title: explicit arg wins; auto-detect is the default fallback.
+    # Passing a positional title (e.g. ccp "my note") disables auto-detect so
+    # the user's message is used as-is.
+    if [[ -z "${title}" ]]; then
         title=$(auto_detect_title)
         log_info "Auto-detected: ${title}"
-    fi
-
-    # Prompt for title if none provided
-    if [[ -z "${title}" ]]; then
-        local detected
-        detected=$(auto_detect_title)
-        echo -e "${BLUE}Auto-detected:${NC} ${detected}"
-        echo -n "Press Enter to use this, or type custom title: "
-        read -r custom_title
-        title="${custom_title:-${detected}}"
     fi
 
     # Check dependencies
@@ -229,8 +231,9 @@ main() {
         exit 1
     fi
 
-    # Setup cleanup on exit
-    trap 'cleanup_session; cleanup_monitor' EXIT
+    # Setup cleanup on exit (ccp_settings_file populated below if dynamic mode)
+    local ccp_settings_file=""
+    trap 'cleanup_session; cleanup_monitor; teardown_ccp_hooks "${ccp_settings_file}"; rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}"' EXIT
 
     # Set initial title and save session
     set_title "${title}"
@@ -254,6 +257,23 @@ main() {
 
     # Launch Claude Code
     if [[ "${enable_dynamic}" = true ]]; then
+        # Export hook file paths so monitor and hook_runner.sh can share them
+        export CCP_STATUS_FILE="${STATE_DIR}/status.$$.txt"
+        export CCP_CONTEXT_FILE="${STATE_DIR}/context.$$.txt"
+        export CCP_HOOK_RUNNER="${LIB_DIR}/hook_runner.sh"
+
+        # Export project name and branch for the title prefix
+        CCP_PROJECT_NAME=$(basename "${directory}")
+        if git -C "${directory}" rev-parse --git-dir > /dev/null 2>&1; then
+            CCP_BRANCH_NAME=$(git -C "${directory}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+        else
+            CCP_BRANCH_NAME=""
+        fi
+        export CCP_PROJECT_NAME CCP_BRANCH_NAME
+
+        # Inject hooks into the project's .claude/settings.local.json
+        ccp_settings_file=$(setup_ccp_hooks "${directory}" "${CCP_HOOK_RUNNER}")
+
         monitor_claude_output "${title}"
     else
         local claude_cmd

@@ -46,6 +46,7 @@ cp "${SCRIPT_DIR}/bin/ccp" "${INSTALL_DIR}/bin/ccp"
 cp "${SCRIPT_DIR}"/lib/*.sh "${INSTALL_DIR}/lib/"
 cp "${SCRIPT_DIR}"/lib/*.py "${INSTALL_DIR}/lib/" 2>/dev/null || true
 chmod +x "${INSTALL_DIR}/bin/ccp"
+chmod +x "${INSTALL_DIR}/lib/hook_runner.sh"
 
 echo -e "  ${GREEN}✓${NC} Installed to ${INSTALL_DIR}"
 
