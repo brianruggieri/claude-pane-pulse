@@ -45,6 +45,12 @@ build/
 # Personal configuration
 config.local
 
+# Git worktrees (always under .worktrees/ per project convention)
+.worktrees/
+
+# Demo working files
+demo-source/
+
 # Project-internal files (handoff docs, zip archives, orchestration state)
 HANDOFF.md
 PROJECT_SUMMARY.md

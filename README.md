@@ -1,12 +1,12 @@
-# Claude Pane Pulse 🎯
+# **C**laude **C**ode **P**ane-Pulse &nbsp;`ccp`
 
-> Dynamic terminal titles for Claude Code CLI - see what each agent is actually doing
+> Dynamic terminal titles for Claude Code — see what each agent is actually doing at a glance
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![macOS](https://img.shields.io/badge/macOS-Sonoma+-blue.svg)](https://www.apple.com/macos/)
 [![Bash](https://img.shields.io/badge/bash-3.2+-green.svg)](https://www.gnu.org/software/bash/)
 
-Claude Pane Pulse automatically updates your terminal pane titles to show real-time status of your Claude Code sessions — building, testing, pushing, and more — so you always know what each agent is working on at a glance.
+**C**laude **C**ode **P**ane-Pulse (`ccp`) automatically updates your terminal pane titles to show real-time status of your Claude Code sessions — building, testing, pushing, and more — so you always know what each agent is working on at a glance.
 
 ![claude-pane-pulse demo](demo-assets/hero-animated.gif)
 

@@ -1,4 +1,4 @@
-# Contributing to Claude Pane Pulse
+# Contributing to **C**laude **C**ode **P**ane-Pulse
 
 Thank you for your interest in contributing! This guide covers everything you need to get started.
 

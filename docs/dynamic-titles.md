@@ -1,6 +1,6 @@
 # Dynamic Title System
 
-Claude Pane Pulse monitors Claude Code's output in real time and updates your terminal title to reflect what's happening.
+**C**laude **C**ode **P**ane-Pulse monitors Claude Code's output in real time and updates your terminal title to reflect what's happening.
 
 ## How It Works
 
