@@ -131,6 +131,9 @@ main() {
                 exit 0
                 ;;
             --list|-l)
+                if ! check_dependencies; then
+                    exit 1
+                fi
                 list_sessions
                 exit 0
                 ;;
@@ -144,6 +147,10 @@ main() {
                 ;;
             --pr)
                 shift
+                if [[ $# -lt 2 ]]; then
+                    log_error "Usage: ${SCRIPT_NAME} --pr NUMBER DESCRIPTION"
+                    exit 1
+                fi
                 local pr_num="$1"
                 shift
                 title="PR #${pr_num} - $1"
@@ -151,6 +158,10 @@ main() {
                 ;;
             --issue)
                 shift
+                if [[ $# -lt 2 ]]; then
+                    log_error "Usage: ${SCRIPT_NAME} --issue NUMBER DESCRIPTION"
+                    exit 1
+                fi
                 local issue_num="$1"
                 shift
                 title="Issue #${issue_num} - $1"
@@ -181,7 +192,7 @@ main() {
                     list_sessions
                     exit 1
                 fi
-                title="${search}"
+                title=$(find_session_title "${search}")
                 shift
                 ;;
             *)

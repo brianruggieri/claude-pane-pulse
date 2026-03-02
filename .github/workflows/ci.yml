@@ -32,6 +32,18 @@ jobs:
       - name: Run test suite
         run: bash tests/test-suite.sh
 
+  e2e:
+    name: E2E Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install jq
+
+      - name: Run e2e tests
+        run: FAST=1 bash tests/e2e/run-e2e.sh
+
   install-smoke:
     name: Install Smoke Test
     runs-on: macos-latest
