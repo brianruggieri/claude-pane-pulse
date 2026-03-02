@@ -24,10 +24,19 @@ save_session() {
         --argjson pid $$ \
         '{title: $title, directory: $directory, started: $started, pid: $pid}')
 
+    # Read existing sessions; reset to empty array if file is missing or corrupt
     local sessions
-    sessions=$(cat "${SESSION_FILE}")
-    echo "${sessions}" | jq --argjson new "${session}" '. += [$new]' > "${SESSION_FILE}.tmp"
-    mv "${SESSION_FILE}.tmp" "${SESSION_FILE}"
+    sessions=$(cat "${SESSION_FILE}" 2>/dev/null)
+    if ! echo "${sessions}" | jq empty 2>/dev/null; then
+        sessions="[]"
+    fi
+
+    local result
+    result=$(echo "${sessions}" | jq --argjson new "${session}" '. += [$new]')
+    # Only write if jq produced valid output
+    if [[ -n "${result}" ]]; then
+        echo "${result}" > "${SESSION_FILE}.tmp" && mv "${SESSION_FILE}.tmp" "${SESSION_FILE}"
+    fi
 }
 
 # prune_dead_sessions: remove entries whose process is no longer running.
@@ -46,7 +55,7 @@ prune_dead_sessions() {
         fi
     done < <(echo "${sessions}" | jq -c '.[]')
 
-    echo "${keep}" > "${SESSION_FILE}"
+    echo "${keep}" > "${SESSION_FILE}.tmp" && mv "${SESSION_FILE}.tmp" "${SESSION_FILE}"
 }
 
 list_sessions() {
