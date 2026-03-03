@@ -150,22 +150,35 @@ extract_context() {
     echo "${context}|${priority}"
 }
 
-# animate_status: append a pulsing circle to active in-progress statuses
-# Frames cycle: ○ → ◑ → ● → ◑ (hollow → half → full → half → …)
+# animate_status: append a cycling spinner to active in-progress statuses.
+# Uses Claude Code's exact spinner characters in their correct ping-pong order.
+# Source: reverse-engineered from raw terminal output; the original expression
+# array is ["·","✻","✽","✶","✳","✢"] driven by a triangle-wave oscillator,
+# producing a grow→shrink pulse rather than a one-way sweep.
+#
+# 10-frame ping-pong at ~0.15s/frame = 1.5s full cycle:
+#   · ✻ ✽ ✶ ✳ ✢  ✳ ✶ ✽ ✻  (then back to ·)
+#   0 1 2 3 4 5  6 7 8 9
 animate_status() {
     local status="$1"
     local frame="$2"
 
     # Only animate operations still in progress (not completions or errors)
     if [[ "${status}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${status}" =~ "✸" ]]; then
-        local circle=""
-        case $((frame % 4)) in
-            0) circle="○" ;;
-            1) circle="◑" ;;
-            2) circle="●" ;;
-            3) circle="◑" ;;
+        local spinner=""
+        case $((frame % 10)) in
+            0) spinner="·" ;;   # U+00B7 MIDDLE DOT          — grow start
+            1) spinner="✻" ;;   # U+273B TEARDROP-SPOKED ASTERISK
+            2) spinner="✽" ;;   # U+273D HEAVY TEARDROP-SPOKED ASTERISK
+            3) spinner="✶" ;;   # U+2736 SIX POINTED BLACK STAR
+            4) spinner="✳" ;;   # U+2733 EIGHT-SPOKED ASTERISK
+            5) spinner="✢" ;;   # U+2722 FOUR TEARDROP-SPOKED ASTERISK — peak
+            6) spinner="✳" ;;   # U+2733                     — shrink
+            7) spinner="✶" ;;   # U+2736
+            8) spinner="✽" ;;   # U+273D
+            9) spinner="✻" ;;   # U+273B
         esac
-        echo "${status} ${circle}"
+        echo "${status} ${spinner}"
     else
         echo "${status}"
     fi
@@ -198,9 +211,19 @@ monitor_claude_output() {
         local prev_display_context=""  # cached: title write skipped when unchanged
         local needs_title_update=false # gate: skip animate+compose on non-state-change lines
         local last_fifo_activity=$SECONDS
+        local last_hook_check=$SECONDS # hook files polled at 1/sec regardless of tick rate
         # Hook data files (set by bin/ccp via environment exports)
         local status_file="${CCP_STATUS_FILE:-}"
         local context_file="${CCP_CONTEXT_FILE:-}"
+
+        # Fast animation tick: bash 4+ supports fractional read -t values; bash 3.2
+        # (macOS system bash) silently truncates 0.15 to 0, making read non-blocking
+        # and spinning the CPU.  Also skip fast mode inside tmux — title writes there
+        # cost a subprocess fork per frame.
+        local read_timeout="1"
+        if [[ "${BASH_VERSINFO[0]:-3}" -ge 4 && -z "${TMUX:-}" ]]; then
+            read_timeout="0.15"  # ~6.7 fps — close to Claude Code's native 8.3 fps
+        fi
 
         # Build the static title prefix: "project (branch) | "
         # Computed once — these env vars are exported by bin/ccp at launch.
@@ -226,7 +249,7 @@ monitor_claude_output() {
         while true; do
             local line read_status
             read_status=0
-            IFS= read -r -t 1 line || read_status=$?
+            IFS= read -r -t "${read_timeout}" line || read_status=$?
 
             if [[ ${read_status} -eq 0 ]]; then
                 # ── Got a line ────────────────────────────────────────────
@@ -275,62 +298,70 @@ monitor_claude_output() {
                 fi
 
             elif [[ ${read_status} -gt 128 || ${read_status} -eq 1 ]]; then
-                # ── 1-second timeout — heartbeat tick ─────────────────────
+                # ── Animation tick (every read_timeout interval) ───────────
                 # bash 4+: read -t timeout returns >128
                 # bash 3.2 (macOS): read -t timeout returns 1 (same as EOF;
-                # indistinguishable).  We treat both as "heartbeat" and rely
-                # on cleanup_monitor() to kill us when Claude Code exits.
+                # indistinguishable).  We treat both as a tick and rely on
+                # cleanup_monitor() to kill us when Claude Code exits.
+
+                # Advance animation frame every tick for smooth pulse.
+                [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 10 ))
+                needs_title_update=true
+
+                # ── Hook polling — 1× per second maximum ──────────────────
+                # Decoupled from the animation tick rate: file reads and idle
+                # logic run at most once per wall-clock second regardless of
+                # how fast the animation is ticking.
                 local current_time=$SECONDS
+                if [[ $((current_time - last_hook_check)) -ge 1 ]]; then
+                    last_hook_check=$current_time
 
-                # ── Read hook status file ──────────────────────────────────
-                local hook_status=""
-                if [[ -n "${status_file}" && -f "${status_file}" ]]; then
-                    hook_status=$(< "${status_file}") || hook_status=""
-                fi
+                    # ── Read hook status file ──────────────────────────────
+                    local hook_status=""
+                    if [[ -n "${status_file}" && -f "${status_file}" ]]; then
+                        hook_status=$(< "${status_file}") || hook_status=""
+                    fi
 
-                if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
-                    current_context="${hook_status}"
-                    current_priority=$(status_to_priority "${hook_status}")
-                elif [[ -z "${hook_status}" && "${current_priority}" -gt 10 ]]; then
-                    # Stop hook fired (empty status file).  Wait for the FIFO
-                    # to drain before committing to idle — the last output
-                    # bytes can lag the hook by 1-3 s.
-                    if [[ $((current_time - last_fifo_activity)) -gt 3 ]]; then
+                    if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
+                        current_context="${hook_status}"
+                        current_priority=$(status_to_priority "${hook_status}")
+                    elif [[ -z "${hook_status}" && "${current_priority}" -gt 10 ]]; then
+                        # Stop hook fired (empty status file).  Wait for the FIFO
+                        # to drain before committing to idle — the last output
+                        # bytes can lag the hook by 1-3 s.
+                        if [[ $((current_time - last_fifo_activity)) -gt 3 ]]; then
+                            current_priority=10
+                            current_context="💤 Idle"
+                        fi
+                    fi
+
+                    # Fallback idle: FIFO has been completely silent for 60 s.
+                    # This fires when hooks are broken and Claude has genuinely
+                    # stopped — FIFO silence is version-stable unlike text parsing.
+                    if [[ $((current_time - last_fifo_activity)) -gt 60 ]] && \
+                       [[ "${current_priority}" -gt 10 ]]; then
                         current_priority=10
                         current_context="💤 Idle"
                     fi
-                fi
 
-                # Fallback idle: FIFO has been completely silent for 60 s.
-                # This fires when hooks are broken and Claude has genuinely
-                # stopped — FIFO silence is version-stable unlike text parsing.
-                if [[ $((current_time - last_fifo_activity)) -gt 60 ]] && \
-                   [[ "${current_priority}" -gt 10 ]]; then
-                    current_priority=10
-                    current_context="💤 Idle"
-                fi
-
-                # ── Read context file (user prompt as task summary) ────────
-                if [[ -n "${context_file}" && -f "${context_file}" ]]; then
-                    local new_summary
-                    new_summary=$(< "${context_file}") || new_summary=""
-                    if [[ -n "${new_summary}" && "${new_summary}" != "${task_summary}" ]]; then
-                        task_summary="${new_summary}"
-                        # Recompute clean_summary once here (heartbeat, 1/sec) rather
-                        # than via 3× sed subprocess forks on every FIFO line.
-                        clean_summary="${task_summary}"
-                        if [[ -n "${CCP_PROJECT_NAME:-}" ]]; then
-                            clean_summary=$(printf '%s' "${clean_summary}" \
-                                | sed "s/ (${CCP_PROJECT_NAME})[^,]*,\{0,1\}[[:space:]]*//g" \
-                                | sed 's/^[[:space:]]*//' \
-                                | sed 's/[[:space:]]*$//')
+                    # ── Read context file (user prompt as task summary) ────
+                    if [[ -n "${context_file}" && -f "${context_file}" ]]; then
+                        local new_summary
+                        new_summary=$(< "${context_file}") || new_summary=""
+                        if [[ -n "${new_summary}" && "${new_summary}" != "${task_summary}" ]]; then
+                            task_summary="${new_summary}"
+                            # Recompute clean_summary once here (1/sec) rather
+                            # than via 3× sed subprocess forks on every tick.
+                            clean_summary="${task_summary}"
+                            if [[ -n "${CCP_PROJECT_NAME:-}" ]]; then
+                                clean_summary=$(printf '%s' "${clean_summary}" \
+                                    | sed "s/ (${CCP_PROJECT_NAME})[^,]*,\{0,1\}[[:space:]]*//g" \
+                                    | sed 's/^[[:space:]]*//' \
+                                    | sed 's/[[:space:]]*$//')
+                            fi
                         fi
                     fi
                 fi
-
-                # Advance animation frame once per heartbeat (1 fps — not per FIFO line)
-                [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 4 ))
-                needs_title_update=true  # heartbeat always refreshes the title
             else
                 # EOF: write end of pipe closed (claude has exited)
                 break
@@ -344,27 +375,53 @@ monitor_claude_output() {
             # zero OSC writes, zero tmux subprocesses on the hot path.
             if [[ "${needs_title_update}" == "true" ]]; then
                 needs_title_update=false
-                local animated_status
-                animated_status=$(animate_status "${current_context}" "${frame_counter}")
 
-                # Compose: prefix + [summary | ]status
-                # clean_summary is pre-computed in the heartbeat section above.
-                local display_content=""
-                if [[ -n "${clean_summary}" && -n "${animated_status}" ]]; then
-                    display_content="${clean_summary} | ${animated_status}"
-                elif [[ -n "${clean_summary}" ]]; then
-                    display_content="${clean_summary}"
-                elif [[ -n "${animated_status}" ]]; then
-                    display_content="${animated_status}"
+                # Inline animation — no $() fork.
+                # Spinner is extracted separately so it can be placed at the
+                # FRONT of the title: "✳ project (branch) | summary | status"
+                # rather than appended to the status text.
+                local _spinner=""
+                if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${current_context}" =~ "✸" ]]; then
+                    case $((frame_counter % 10)) in
+                        0) _spinner="·"  ;;
+                        1) _spinner="✻"  ;;
+                        2) _spinner="✽"  ;;
+                        3) _spinner="✶"  ;;
+                        4) _spinner="✳"  ;;
+                        5) _spinner="✢"  ;;
+                        6) _spinner="✳"  ;;
+                        7) _spinner="✶"  ;;
+                        8) _spinner="✽"  ;;
+                        9) _spinner="✻"  ;;
+                    esac
                 fi
 
-                local display_context=""
+                # Compose body: [prefix][summary | ]status
+                # clean_summary is pre-computed in the hook-poll section above.
+                local display_content=""
+                if [[ -n "${clean_summary}" && -n "${current_context}" ]]; then
+                    display_content="${clean_summary} | ${current_context}"
+                elif [[ -n "${clean_summary}" ]]; then
+                    display_content="${clean_summary}"
+                elif [[ -n "${current_context}" ]]; then
+                    display_content="${current_context}"
+                fi
+
+                local _body=""
                 if [[ -n "${title_prefix}" && -n "${display_content}" ]]; then
-                    display_context="${title_prefix}${display_content}"
+                    _body="${title_prefix}${display_content}"
                 elif [[ -n "${title_prefix}" ]]; then
-                    display_context="${title_prefix%' | '}"
+                    _body="${title_prefix%' | '}"
                 else
-                    display_context="${display_content}"
+                    _body="${display_content}"
+                fi
+
+                # Prepend spinner to body when active
+                local display_context=""
+                if [[ -n "${_spinner}" && -n "${_body}" ]]; then
+                    display_context="${_spinner} ${_body}"
+                else
+                    display_context="${_body}"
                 fi
 
                 if [[ "${display_context}" != "${prev_display_context}" ]]; then

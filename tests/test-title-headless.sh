@@ -72,6 +72,8 @@ assert_not_contains "log: idle has no pipe separator"     "proj (feat) | proj"  
 assert_contains "log: active entry shows separator"       "proj (feat) | 🧪 Testing..." "${log_content}"
 
 # ── Section 2: monitor loop — no doubling on startup ──────────────────────────
+# Mirrors the current monitor_claude_output heartbeat path exactly:
+# prepended spinner, % 6 frame counter, $(< file), last_hook_check gate.
 
 echo ""
 echo "monitor loop — startup title (no context yet)"
@@ -93,36 +95,60 @@ mkfifo "${PIPE}"
 FEED_PID=$!
 
 (
+    set +e
     source "${LIB_DIR}/monitor.sh"
-    # Inline the monitor subshell directly from monitor_claude_output
-    local_priority=0
-    local_context=""
-    last_update=$(date +%s)
-    frame=0
-    last_hook=0
+    current_priority=0
+    current_context=""
+    frame_counter=0
+    task_summary=""
+    clean_summary=""
+    prev_display_context=""
+    last_hook_check=$SECONDS
     s_file="${CCP_STATUS_FILE:-}"
     c_file="${CCP_CONTEXT_FILE:-}"
-    esc=$(printf '\033')
     update_title_with_context "myproject (main)" "" >/dev/null 2>&1 || true
     for _ in 1 2; do   # two heartbeat cycles
         IFS= read -r -t 1 line < "${PIPE}" || true
-        current_time=$(date +%s)
-        if [[ -n "${s_file}" && -f "${s_file}" ]]; then
-            hook_status=$(cat "${s_file}" 2>/dev/null || true)
-            if [[ -n "${hook_status}" && "${hook_status}" != "${local_context}" ]]; then
-                local_context="${hook_status}"
-                local_priority=$(status_to_priority "${hook_status}")
-                last_hook=${current_time}
+        [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 6 ))
+        current_time=$SECONDS
+        if [[ $((current_time - last_hook_check)) -ge 1 ]]; then
+            last_hook_check=$current_time
+            hook_status=""
+            [[ -n "${s_file}" && -f "${s_file}" ]] && hook_status=$(< "${s_file}") || hook_status=""
+            if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
+                current_context="${hook_status}"
+                current_priority=$(status_to_priority "${hook_status}")
+            fi
+            new_sum=""
+            [[ -n "${c_file}" && -f "${c_file}" ]] && new_sum=$(< "${c_file}") || new_sum=""
+            if [[ -n "${new_sum}" && "${new_sum}" != "${task_summary}" ]]; then
+                task_summary="${new_sum}"
+                clean_summary="${task_summary}"
             fi
         fi
-        if [[ -n "${c_file}" && -f "${c_file}" ]]; then
-            new_sum=$(cat "${c_file}" 2>/dev/null || true)
+        _spinner=""
+        if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) ]]; then
+            case $((frame_counter % 6)) in
+                0) _spinner="·" ;; 1) _spinner="✢" ;; 2) _spinner="✳" ;;
+                3) _spinner="✶" ;; 4) _spinner="✻" ;; 5) _spinner="✽" ;;
+            esac
         fi
-        animated=$(animate_status "${local_context}" "${frame}")
-        display=""
-        [[ -n "${animated}" ]] && display="${animated}"
-        update_title_with_context "myproject (main)" "${display}" >/dev/null 2>&1 || true
-        frame=$(( (frame + 1) % 4 ))
+        display_content=""
+        if [[ -n "${clean_summary}" && -n "${current_context}" ]]; then
+            display_content="${clean_summary} | ${current_context}"
+        elif [[ -n "${current_context}" ]]; then
+            display_content="${current_context}"
+        fi
+        display_context=""
+        if [[ -n "${_spinner}" && -n "${display_content}" ]]; then
+            display_context="${_spinner} ${display_content}"
+        else
+            display_context="${display_content}"
+        fi
+        if [[ "${display_context}" != "${prev_display_context}" ]]; then
+            update_title_with_context "myproject (main)" "${display_context}" >/dev/null 2>&1 || true
+            prev_display_context="${display_context}"
+        fi
     done
 ) 2>/dev/null
 
@@ -150,11 +176,15 @@ mkfifo "${PIPE2}"
 FEED2_PID=$!
 
 (
+    set +e
     source "${LIB_DIR}/monitor.sh"
-    local_priority=0
-    local_context=""
-    last_update=$(date +%s)
-    frame=0
+    current_priority=0
+    current_context=""
+    frame_counter=0
+    task_summary=""
+    clean_summary=""
+    prev_display_context=""
+    last_hook_check=$SECONDS
     s_file="${CCP_STATUS_FILE:-}"
     c_file="${CCP_CONTEXT_FILE:-}"
 
@@ -167,27 +197,46 @@ FEED2_PID=$!
     update_title_with_context "myproject (main)" "" >/dev/null 2>&1 || true
     for _ in 1 2 3 4; do
         IFS= read -r -t 1 line < "${PIPE2}" || true
-        current_time=$(date +%s)
-        task_sum=""
-        if [[ -n "${s_file}" && -f "${s_file}" ]]; then
-            hook_status=$(cat "${s_file}" 2>/dev/null || true)
-            if [[ -n "${hook_status}" && "${hook_status}" != "${local_context}" ]]; then
-                local_context="${hook_status}"
-                local_priority=$(status_to_priority "${hook_status}")
+        [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 6 ))
+        current_time=$SECONDS
+        if [[ $((current_time - last_hook_check)) -ge 1 ]]; then
+            last_hook_check=$current_time
+            hook_status=""
+            [[ -n "${s_file}" && -f "${s_file}" ]] && hook_status=$(< "${s_file}") || hook_status=""
+            if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
+                current_context="${hook_status}"
+                current_priority=$(status_to_priority "${hook_status}")
+            fi
+            new_sum=""
+            [[ -n "${c_file}" && -f "${c_file}" ]] && new_sum=$(< "${c_file}") || new_sum=""
+            if [[ -n "${new_sum}" && "${new_sum}" != "${task_summary}" ]]; then
+                task_summary="${new_sum}"
+                clean_summary="${task_summary}"
             fi
         fi
-        if [[ -n "${c_file}" && -f "${c_file}" ]]; then
-            task_sum=$(cat "${c_file}" 2>/dev/null || true)
+        _spinner=""
+        if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) ]]; then
+            case $((frame_counter % 6)) in
+                0) _spinner="·" ;; 1) _spinner="✢" ;; 2) _spinner="✳" ;;
+                3) _spinner="✶" ;; 4) _spinner="✻" ;; 5) _spinner="✽" ;;
+            esac
         fi
-        animated=$(animate_status "${local_context}" "${frame}")
-        display=""
-        if [[ -n "${task_sum}" && -n "${animated}" ]]; then
-            display="${task_sum} | ${animated}"
-        elif [[ -n "${animated}" ]]; then
-            display="${animated}"
+        display_content=""
+        if [[ -n "${clean_summary}" && -n "${current_context}" ]]; then
+            display_content="${clean_summary} | ${current_context}"
+        elif [[ -n "${current_context}" ]]; then
+            display_content="${current_context}"
         fi
-        update_title_with_context "myproject (main)" "${display}" >/dev/null 2>&1 || true
-        frame=$(( (frame + 1) % 4 ))
+        display_context=""
+        if [[ -n "${_spinner}" && -n "${display_content}" ]]; then
+            display_context="${_spinner} ${display_content}"
+        else
+            display_context="${display_content}"
+        fi
+        if [[ "${display_context}" != "${prev_display_context}" ]]; then
+            update_title_with_context "myproject (main)" "${display_context}" >/dev/null 2>&1 || true
+            prev_display_context="${display_context}"
+        fi
     done
 ) 2>/dev/null
 
@@ -212,19 +261,18 @@ printf '🧪 Testing' > "${STATUS_FILE}"
 printf '' > "${STATUS_FILE}"
 
 (
+    set +e
     source "${LIB_DIR}/monitor.sh"
-    local_priority=80
-    local_context="🧪 Testing"
+    current_priority=80
+    current_context="🧪 Testing"
     s_file="${CCP_STATUS_FILE:-}"
-    current_time=$(date +%s)
-    if [[ -n "${s_file}" && -f "${s_file}" ]]; then
-        hook_status=$(cat "${s_file}" 2>/dev/null || true)
-        if [[ -z "${hook_status}" && "${local_priority}" -gt 10 ]]; then
-            local_priority=10
-            local_context="💤 Idle"
-        fi
+    hook_status=""
+    [[ -n "${s_file}" && -f "${s_file}" ]] && hook_status=$(< "${s_file}") || hook_status=""
+    if [[ -z "${hook_status}" && "${current_priority}" -gt 10 ]]; then
+        current_priority=10
+        current_context="💤 Idle"
     fi
-    update_title_with_context "myproject (main)" "${local_context}" >/dev/null 2>&1 || true
+    update_title_with_context "myproject (main)" "${current_context}" >/dev/null 2>&1 || true
 ) 2>/dev/null
 
 stop_log=$(cat "${TITLE_LOG}")
