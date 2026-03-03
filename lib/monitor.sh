@@ -226,7 +226,7 @@ monitor_claude_output() {
         fi
 
         # Build the static title prefix: "project (branch) | "
-        # format_title_prefix adapts to the current pane width.
+        # format_title_prefix adapts to the pane width at session start.
         local title_prefix
         title_prefix=$(format_title_prefix "${CCP_PROJECT_NAME:-}" "${CCP_BRANCH_NAME:-}")
 

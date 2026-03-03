@@ -103,10 +103,12 @@ format_title_prefix() {
         width="${COLUMNS:-0}"
         if ! [[ "${width}" =~ ^[0-9]+$ ]] || [[ "${width}" -le 0 ]]; then
             width=$(tput cols 2>/dev/null || echo "")
-            if ! [[ "${width}" =~ ^[0-9]+$ ]] || [[ "${width}" -le 0 ]]; then
-                width=80
-            fi
         fi
+    fi
+
+    # Normalize: coerce non-numeric or non-positive values to the fallback
+    if ! [[ "${width}" =~ ^[0-9]+$ ]] || [[ "${width}" -le 0 ]]; then
+        width=80
     fi
 
     # Ensure a sensible minimum width
