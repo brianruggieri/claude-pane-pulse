@@ -192,10 +192,11 @@ monitor_claude_output() {
 
         local current_priority=0
         local current_context=""
-        local last_update=$SECONDS
         local frame_counter=0
         local task_summary=""
-        local last_hook_update=0
+        local clean_summary=""        # cached: recomputed only when task_summary changes
+        local prev_display_context=""  # cached: title write skipped when unchanged
+        local needs_title_update=false # gate: skip animate+compose on non-state-change lines
         local last_fifo_activity=$SECONDS
         # Hook data files (set by bin/ccp via environment exports)
         local status_file="${CCP_STATUS_FILE:-}"
@@ -246,7 +247,7 @@ monitor_claude_output() {
                     if [[ "${current_priority}" -le 10 ]]; then
                         current_context="💭 Thinking"
                         current_priority=70
-                        last_update=$SECONDS
+                        needs_title_update=true  # state changed — write title now
                     fi
 
                     # Completion events (test pass/fail, git commits) are the
@@ -268,7 +269,7 @@ monitor_claude_output() {
                               (Tests\ passed|Tests\ failed|Committed) ]]; then
                             current_context="${new_context}"
                             current_priority=0   # let the next event win
-                            last_update=$SECONDS
+                            needs_title_update=true  # completion event — write title now
                         fi
                     fi
                 fi
@@ -284,14 +285,12 @@ monitor_claude_output() {
                 # ── Read hook status file ──────────────────────────────────
                 local hook_status=""
                 if [[ -n "${status_file}" && -f "${status_file}" ]]; then
-                    hook_status=$(cat "${status_file}" 2>/dev/null || true)
+                    hook_status=$(< "${status_file}") || hook_status=""
                 fi
 
                 if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
                     current_context="${hook_status}"
                     current_priority=$(status_to_priority "${hook_status}")
-                    last_update="${current_time}"
-                    last_hook_update="${current_time}"
                 elif [[ -z "${hook_status}" && "${current_priority}" -gt 10 ]]; then
                     # Stop hook fired (empty status file).  Wait for the FIFO
                     # to drain before committing to idle — the last output
@@ -299,7 +298,6 @@ monitor_claude_output() {
                     if [[ $((current_time - last_fifo_activity)) -gt 3 ]]; then
                         current_priority=10
                         current_context="💤 Idle"
-                        last_update="${current_time}"
                     fi
                 fi
 
@@ -310,57 +308,70 @@ monitor_claude_output() {
                    [[ "${current_priority}" -gt 10 ]]; then
                     current_priority=10
                     current_context="💤 Idle"
-                    last_update="${current_time}"
                 fi
 
                 # ── Read context file (user prompt as task summary) ────────
                 if [[ -n "${context_file}" && -f "${context_file}" ]]; then
                     local new_summary
-                    new_summary=$(cat "${context_file}" 2>/dev/null || true)
-                    [[ -n "${new_summary}" ]] && task_summary="${new_summary}"
+                    new_summary=$(< "${context_file}") || new_summary=""
+                    if [[ -n "${new_summary}" && "${new_summary}" != "${task_summary}" ]]; then
+                        task_summary="${new_summary}"
+                        # Recompute clean_summary once here (heartbeat, 1/sec) rather
+                        # than via 3× sed subprocess forks on every FIFO line.
+                        clean_summary="${task_summary}"
+                        if [[ -n "${CCP_PROJECT_NAME:-}" ]]; then
+                            clean_summary=$(printf '%s' "${clean_summary}" \
+                                | sed "s/ (${CCP_PROJECT_NAME})[^,]*,\{0,1\}[[:space:]]*//g" \
+                                | sed 's/^[[:space:]]*//' \
+                                | sed 's/[[:space:]]*$//')
+                        fi
+                    fi
                 fi
 
                 # Advance animation frame once per heartbeat (1 fps — not per FIFO line)
                 [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 4 ))
+                needs_title_update=true  # heartbeat always refreshes the title
             else
                 # EOF: write end of pipe closed (claude has exited)
                 break
             fi
 
-            # ── Re-assert title on every iteration (new data OR heartbeat) ─
-            local animated_status
-            animated_status=$(animate_status "${current_context}" "${frame_counter}")
+            # ── Re-assert title — only when state has actually changed ──────
+            # display_context can only change on heartbeat ticks (frame_counter
+            # advances there; hook status and task_summary are read there).
+            # On normal FIFO line reads needs_title_update stays false, so the
+            # animate+compose+write block is skipped entirely — zero $() forks,
+            # zero OSC writes, zero tmux subprocesses on the hot path.
+            if [[ "${needs_title_update}" == "true" ]]; then
+                needs_title_update=false
+                local animated_status
+                animated_status=$(animate_status "${current_context}" "${frame_counter}")
 
-            # Strip project name from task_summary to avoid repeating what
-            # the title prefix already shows (e.g. "(project-name)" parenthetical).
-            local clean_summary="${task_summary}"
-            if [[ -n "${CCP_PROJECT_NAME:-}" && -n "${clean_summary}" ]]; then
-                clean_summary=$(printf '%s' "${clean_summary}" \
-                    | sed "s/ (${CCP_PROJECT_NAME})[^,]*,\{0,1\}[[:space:]]*//g" \
-                    | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+                # Compose: prefix + [summary | ]status
+                # clean_summary is pre-computed in the heartbeat section above.
+                local display_content=""
+                if [[ -n "${clean_summary}" && -n "${animated_status}" ]]; then
+                    display_content="${clean_summary} | ${animated_status}"
+                elif [[ -n "${clean_summary}" ]]; then
+                    display_content="${clean_summary}"
+                elif [[ -n "${animated_status}" ]]; then
+                    display_content="${animated_status}"
+                fi
+
+                local display_context=""
+                if [[ -n "${title_prefix}" && -n "${display_content}" ]]; then
+                    display_context="${title_prefix}${display_content}"
+                elif [[ -n "${title_prefix}" ]]; then
+                    display_context="${title_prefix%' | '}"
+                else
+                    display_context="${display_content}"
+                fi
+
+                if [[ "${display_context}" != "${prev_display_context}" ]]; then
+                    update_title_with_context "${base_title}" "${display_context}"
+                    prev_display_context="${display_context}"
+                fi
             fi
-
-            # Compose: prefix + [summary | ]status
-            # If no content at all, just show the prefix (minus trailing " | ")
-            local display_content=""
-            if [[ -n "${clean_summary}" && -n "${animated_status}" ]]; then
-                display_content="${clean_summary} | ${animated_status}"
-            elif [[ -n "${clean_summary}" ]]; then
-                display_content="${clean_summary}"
-            elif [[ -n "${animated_status}" ]]; then
-                display_content="${animated_status}"
-            fi
-
-            local display_context=""
-            if [[ -n "${title_prefix}" && -n "${display_content}" ]]; then
-                display_context="${title_prefix}${display_content}"
-            elif [[ -n "${title_prefix}" ]]; then
-                display_context="${title_prefix%' | '}"
-            else
-                display_context="${display_content}"
-            fi
-
-            update_title_with_context "${base_title}" "${display_context}"
         done
     ) < "${pipe}" &
 
@@ -389,7 +400,7 @@ cleanup_monitor() {
     local monitor_pid_file="${STATE_DIR}/monitor.$$.pid"
     if [[ -f "${monitor_pid_file}" ]]; then
         local monitor_pid
-        monitor_pid=$(cat "${monitor_pid_file}")
+        monitor_pid=$(< "${monitor_pid_file}")
         kill "${monitor_pid}" 2>/dev/null || true
         wait "${monitor_pid}" 2>/dev/null || true
         rm -f "${monitor_pid_file}"

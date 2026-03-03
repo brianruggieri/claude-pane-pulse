@@ -124,7 +124,6 @@ main() {
     local title=""
     local directory="${PWD}"
     local enable_dynamic=true
-    local auto_title=true   # default: on — pass a title arg to override
 
     # Initialize state directory
     init_state_dir
@@ -152,8 +151,7 @@ main() {
                 shift
                 ;;
             --auto-title)
-                auto_title=true
-                shift
+                shift  # auto-title is the default; flag retained for back-compat
                 ;;
             --pr)
                 shift
