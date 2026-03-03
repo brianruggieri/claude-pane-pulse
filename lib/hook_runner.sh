@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # lib/hook_runner.sh - Standalone hook runner for ccp
-# Called by Claude Code's PreToolUse/UserPromptSubmit/Stop hooks.
+# Called by Claude Code's PreToolUse/PostToolUse/PostToolUseFailure/UserPromptSubmit/Stop hooks.
 # Reads hook JSON from stdin, writes status/context to CCP files.
 #
-# Usage: bash hook_runner.sh <pre-tool|user-prompt|stop>
+# Usage: bash hook_runner.sh <pre-tool|post-tool|post-tool-failure|user-prompt|stop|event> [EVENT_NAME]
 # Env:   CCP_STATUS_FILE  - path to write current status
 #        CCP_CONTEXT_FILE - path to write task context (user prompt)
+#        CCP_STATUS_PROFILE - quiet (default) or verbose
 #        CCP_DEBUG_LOG    - optional path for debug output
 #
 # Always exits 0 — must never block or fail Claude Code.
@@ -63,6 +64,111 @@ atomic_write() {
     local content="$2"
     local tmp="${file}.tmp.$$"
     printf '%s' "${content}" > "${tmp}" && mv "${tmp}" "${file}" || true
+}
+
+# status_profile: quiet (default) or verbose.
+status_profile="${CCP_STATUS_PROFILE:-quiet}"
+case "${status_profile}" in
+    quiet|verbose) ;;
+    *) status_profile="quiet" ;;
+esac
+
+is_verbose_profile() {
+    [[ "${status_profile}" == "verbose" ]]
+}
+
+is_action_needed_message() {
+    local msg_lc="$1"
+    [[ "${msg_lc}" =~ (permission|approve|approval|action[[:space:]]required|needs[[:space:]]your|need[[:space:]]your|waiting[[:space:]]for|input|respond|response|confirm|choose|selection|required) ]]
+}
+
+event_status_from_payload() {
+    local event_name="$1"
+    local payload="$2"
+    local status=""
+    local reason=""
+    local notification_msg=""
+    local notification_lc=""
+
+    case "${event_name}" in
+        PermissionRequest)
+            status="⏸️ Awaiting approval"
+            ;;
+        Notification)
+            notification_msg=$(printf '%s' "${payload}" | jq -r '
+                [
+                    .message,
+                    .notification,
+                    .text,
+                    .summary,
+                    .reason,
+                    .payload.message,
+                    .payload.summary,
+                    .data.message,
+                    .data.summary,
+                    .event.message,
+                    .event.summary
+                ]
+                | map(select(type == "string" and length > 0))
+                | .[0] // ""
+            ' 2>/dev/null) || true
+            notification_lc=$(printf '%s' "${notification_msg}" | tr '[:upper:]' '[:lower:]')
+            if [[ -n "${notification_lc}" ]] && is_action_needed_message "${notification_lc}"; then
+                status="🙋 Input needed"
+            elif is_verbose_profile; then
+                status="🔔 Notification"
+            fi
+            ;;
+        TaskCompleted)
+            status="🏁 Completed"
+            ;;
+        SessionEnd)
+            reason=$(printf '%s' "${payload}" | jq -r '
+                .reason // .session_end_reason // .event.reason // .event.session_end_reason // ""
+            ' 2>/dev/null) || true
+            case "${reason}" in
+                clear|compact|logout|bypass_permissions_disabled)
+                    status="🏁 Completed"
+                    ;;
+                *)
+                    if is_verbose_profile; then
+                        status="🔔 Session ended"
+                    fi
+                    ;;
+            esac
+            ;;
+        SessionStart)
+            is_verbose_profile && status="🚀 Session started"
+            ;;
+        PreCompact)
+            is_verbose_profile && status="🧠 Compacting"
+            ;;
+        SubagentStart)
+            is_verbose_profile && status="🤖 Subagent started"
+            ;;
+        SubagentStop)
+            is_verbose_profile && status="✅ Subagent finished"
+            ;;
+        TeammateIdle)
+            is_verbose_profile && status="👥 Teammate idle"
+            ;;
+        ConfigChange)
+            is_verbose_profile && status="⚙️ Config changed"
+            ;;
+        WorktreeCreate)
+            is_verbose_profile && status="🌿 Worktree created"
+            ;;
+        WorktreeRemove)
+            is_verbose_profile && status="🧹 Worktree removed"
+            ;;
+        *)
+            if is_verbose_profile && [[ -n "${event_name}" ]]; then
+                status="🔔 ${event_name}"
+            fi
+            ;;
+    esac
+
+    printf '%s' "${status}"
 }
 
 case "${mode}" in
@@ -143,6 +249,12 @@ case "${mode}" in
             | awk '{n=(NF<5?NF:5); for(i=1;i<=n;i++) printf "%s%s",$i,(i<n?" ":""); print ""}')
         [[ -n "${initial}" ]] && atomic_write "${CCP_CONTEXT_FILE}" "${initial}"
 
+        # Test hook: skip AI distillation when explicitly disabled.
+        if [[ "${CCP_DISABLE_PROMPT_DISTILL:-}" == "1" ]]; then
+            _dbg "distillation disabled via CCP_DISABLE_PROMPT_DISTILL"
+            exit 0
+        fi
+
         # Background AI distillation — rewrites the context file with a proper
         # 3-5 word semantic summary once the haiku call completes (~1-3s).
         # CCP vars are unset inside the subshell so any hooks fired by the child
@@ -184,6 +296,143 @@ case "${mode}" in
         _dbg "clearing status file"
         # Empty status signals idle to the monitor on the next heartbeat
         atomic_write "${CCP_STATUS_FILE}" ""
+        ;;
+
+    post-tool)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+
+        tool=""
+        tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
+        [[ "${tool}" != "Bash" ]] && exit 0
+
+        # tool_response may be a string or JSON object
+        tool_response=""
+        tool_response=$(printf '%s' "${json_input}" | jq -r '
+            .tool_response | if type == "object" then tostring else . end // ""
+        ' 2>/dev/null) || true
+
+        command_str=""
+        command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
+
+        status=""
+        if [[ "${tool_response}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+passed ]]; then
+            status="✅ Tests passed"
+        elif [[ "${tool_response}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+(failed|failing) ]]; then
+            status="❌ Tests failed"
+        elif [[ "${command_str}" =~ git[[:space:]]+commit && "${tool_response}" =~ ^\[ ]]; then
+            status="💾 Committed"
+        fi
+
+        _dbg "post-tool tool=${tool} status=${status}"
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    post-tool-failure)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+
+        tool=""
+        tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
+
+        command_str=""
+        command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
+
+        status=""
+        if [[ "${tool}" == "Bash" ]] && \
+           [[ "${command_str}" =~ (jest|vitest|pytest|mocha|rspec|go[[:space:]]test|cargo[[:space:]]test|phpunit|bun[[:space:]]test|npm[[:space:]]test|yarn[[:space:]]test) ]]; then
+            status="❌ Tests failed"
+        else
+            status="🐛 Error"
+        fi
+
+        _dbg "post-tool-failure tool=${tool} status=${status}"
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    event)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+
+        event_name="${2:-}"
+        if [[ -z "${event_name}" ]]; then
+            event_name=$(printf '%s' "${json_input}" | jq -r '
+                .hook_event_name // .event_name // .event // ""
+            ' 2>/dev/null) || true
+        fi
+
+        status=$(event_status_from_payload "${event_name}" "${json_input}")
+        _dbg "event=${event_name} profile=${status_profile} status=${status}"
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    permission-request)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "PermissionRequest" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    notification)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "Notification" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    task-completed)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "TaskCompleted" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    session-start)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "SessionStart" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    session-end)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "SessionEnd" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    pre-compact)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "PreCompact" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    subagent-start)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "SubagentStart" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    subagent-stop)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "SubagentStop" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    teammate-idle)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "TeammateIdle" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    config-change)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "ConfigChange" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    worktree-create)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "WorktreeCreate" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    worktree-remove)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        status=$(event_status_from_payload "WorktreeRemove" "${json_input}")
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
         ;;
 esac
 

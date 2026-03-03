@@ -55,6 +55,7 @@ ${BLUE}Quick Formats:${NC}
 ${BLUE}Options:${NC}
     --auto-title            Auto-detect title from git branch
     --no-dynamic            Disable dynamic updates (static title)
+    --status-profile MODE   Status surface: quiet (default) or verbose
     --continue TITLE        Resume session by title search
     --list, -l              List all active sessions
     --help, -h              Show this help
@@ -62,6 +63,7 @@ ${BLUE}Options:${NC}
 
 ${BLUE}Features:${NC}
     • Dynamic status updates (Building, Testing, Pushing, etc.)
+    • Tiered status profiles (quiet default, verbose full surface)
     • Animated progress indicators
     • Priority-based status display
     • Session tracking and resumption
@@ -124,6 +126,7 @@ main() {
     local title=""
     local directory="${PWD}"
     local enable_dynamic=true
+    local status_profile_cli=""
 
     # Initialize state directory
     init_state_dir
@@ -148,6 +151,15 @@ main() {
                 ;;
             --no-dynamic)
                 enable_dynamic=false
+                shift
+                ;;
+            --status-profile)
+                shift
+                if [[ $# -lt 1 ]]; then
+                    log_error "Usage: ${SCRIPT_NAME} --status-profile quiet|verbose"
+                    exit 1
+                fi
+                status_profile_cli="$1"
                 shift
                 ;;
             --auto-title)
@@ -224,13 +236,26 @@ main() {
         log_info "Auto-detected: ${title}"
     fi
 
+    # Resolve status profile with precedence:
+    #   CLI flag > environment variable > default quiet.
+    local status_profile="${status_profile_cli:-${CCP_STATUS_PROFILE:-quiet}}"
+    case "${status_profile}" in
+        quiet|verbose)
+            ;;
+        *)
+            log_error "Invalid status profile '${status_profile}'. Use: quiet or verbose."
+            exit 1
+            ;;
+    esac
+    export CCP_STATUS_PROFILE="${status_profile}"
+
     # Check dependencies
     if ! check_dependencies; then
         exit 1
     fi
 
     # Setup cleanup on exit (ccp_settings_file populated below if dynamic mode)
-    local ccp_settings_file=""
+    ccp_settings_file=""
     trap 'cleanup_session; cleanup_monitor; teardown_ccp_hooks "${ccp_settings_file}"; rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}"' EXIT
 
     # Set initial title and save session
@@ -242,6 +267,7 @@ main() {
     log_info "Directory: ${directory}"
     if [[ "${enable_dynamic}" = true ]]; then
         log_info "Dynamic titles: ${GREEN}enabled${NC}"
+        log_info "Status profile: ${CCP_STATUS_PROFILE}"
     fi
     echo ""
 
@@ -272,7 +298,12 @@ main() {
         # Inject hooks into the project's .claude/settings.local.json
         ccp_settings_file=$(setup_ccp_hooks "${directory}" "${CCP_HOOK_RUNNER}")
 
-        monitor_claude_output "${title}"
+        # Start background title updater, then run Claude directly.
+        title_updater "${title}"
+
+        local claude_cmd
+        claude_cmd=$(get_claude_cmd)
+        "${claude_cmd}"
     else
         local claude_cmd
         claude_cmd=$(get_claude_cmd)

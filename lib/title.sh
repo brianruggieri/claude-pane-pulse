@@ -5,26 +5,91 @@
 [[ -n "${_CCP_TITLE_SOURCED:-}" ]] && return
 _CCP_TITLE_SOURCED=1
 
-# Set terminal title — per-pane icon name (OSC 1) on iTerm2/modern terminals,
-# window title (OSC 2) on Terminal.app which ignores OSC 1.
-set_title() {
-    local title="$1"
-
-    if [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]]; then
-        printf '\033]1;\007'
-        printf '\033]2;%s\007' "${title}"
-    else
-        printf '\033]1;%s\007' "${title}"
-        printf '\033]2;\007'
-    fi
+detect_terminal_backend() {
+    local backend="osc2"
 
     if [[ -n "${TMUX:-}" ]]; then
-        # shellcheck disable=SC1003
-        printf '\033Ptmux;\033\033]1;%s\007\033\\' "${title}"
-        printf '\033Ptmux;\033\033]2;\007\033\\'
-        tmux set-window-option -q automatic-rename off 2>/dev/null || true
-        tmux rename-window "${title}" 2>/dev/null || true
+        local tmux_major=0 tmux_minor=0 tmux_version
+        tmux_version=$(tmux -V 2>/dev/null | awk '{print $2}')
+        if [[ "${tmux_version}" =~ ^([0-9]+)\.([0-9]+) ]]; then
+            tmux_major="${BASH_REMATCH[1]}"
+            tmux_minor="${BASH_REMATCH[2]}"
+        fi
+        if [[ "${tmux_major}" -gt 2 || ( "${tmux_major}" -eq 2 && "${tmux_minor}" -ge 9 ) ]]; then
+            backend="tmux-pane"
+        else
+            backend="tmux-window"
+        fi
+    elif [[ "${TERM_PROGRAM:-}" == "iTerm.app" ]]; then
+        backend="iterm2"
+    elif [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]]; then
+        backend="apple-terminal"
+    elif [[ "${TERM_PROGRAM:-}" == "kitty" || -n "${KITTY_PID:-}" ]]; then
+        if command -v kitty >/dev/null 2>&1; then
+            backend="kitty"
+        else
+            backend="osc1"
+        fi
+    elif [[ "${TERM_PROGRAM:-}" == "WezTerm" ]]; then
+        backend="wezterm"
+    elif [[ "${TERM_PROGRAM:-}" == "ghostty" ]]; then
+        backend="ghostty"
     fi
+
+    CCP_TERMINAL_BACKEND="${backend}"
+    export CCP_TERMINAL_BACKEND
+}
+
+_ccp_write_title() {
+    local title="$1"
+
+    case "${CCP_TERMINAL_BACKEND:-osc2}" in
+        iterm2|wezterm|osc1)
+            printf '\033]1;%s\007' "${title}"
+            printf '\033]2;\007'
+            ;;
+        apple-terminal|ghostty|osc2)
+            printf '\033]1;\007'
+            printf '\033]2;%s\007' "${title}"
+            ;;
+        kitty)
+            if command -v kitty >/dev/null 2>&1; then
+                kitty @ set-window-title "${title}" 2>/dev/null || true
+            else
+                printf '\033]1;%s\007' "${title}"
+                printf '\033]2;\007'
+            fi
+            ;;
+        tmux-pane)
+            tmux set-window-option -q automatic-rename off 2>/dev/null || true
+            if [[ -n "${TMUX_PANE:-}" ]]; then
+                tmux select-pane -T "${title}" -t "${TMUX_PANE}" 2>/dev/null || true
+            else
+                tmux rename-window "${title}" 2>/dev/null || true
+            fi
+            # shellcheck disable=SC1003
+            printf '\033Ptmux;\033\033]1;%s\007\033\\' "${title}"
+            # shellcheck disable=SC1003
+            printf '\033Ptmux;\033\033]2;\007\033\\'
+            ;;
+        tmux-window)
+            tmux set-window-option -q automatic-rename off 2>/dev/null || true
+            tmux rename-window "${title}" 2>/dev/null || true
+            # shellcheck disable=SC1003
+            printf '\033Ptmux;\033\033]1;%s\007\033\\' "${title}"
+            # shellcheck disable=SC1003
+            printf '\033Ptmux;\033\033]2;\007\033\\'
+            ;;
+        *)
+            printf '\033]1;\007'
+            printf '\033]2;%s\007' "${title}"
+            ;;
+    esac
+}
+
+set_title() {
+    local title="$1"
+    _ccp_write_title "${title}"
 
     # CCP_TITLE_LOG: append each title to a log file (used by e2e tests).
     # Use || true so a bad/unwritable path never terminates ccp under set -e.
@@ -60,23 +125,7 @@ update_title_with_context() {
         display="${base_title}"
     fi
 
-    if [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]]; then
-        # Terminal.app only renders the window title (OSC 2)
-        printf '\033]1;\007'
-        printf '\033]2;%s\007' "${display}"
-    else
-        # iTerm2, Kitty, WezTerm, etc.: OSC 1 drives the per-pane title bar
-        printf '\033]1;%s\007' "${display}"
-        printf '\033]2;\007'   # clear window title — don't touch the app title bar
-    fi
-
-    if [[ -n "${TMUX:-}" ]]; then
-        # shellcheck disable=SC1003
-        printf '\033Ptmux;\033\033]1;%s\007\033\\' "${display}"
-        printf '\033Ptmux;\033\033]2;\007\033\\'
-        tmux set-window-option -q automatic-rename off 2>/dev/null || true
-        tmux rename-window "${display}" 2>/dev/null || true
-    fi
+    _ccp_write_title "${display}"
 
     if [[ -n "${CCP_TITLE_LOG:-}" ]]; then
         mkdir -p -- "$(dirname -- "${CCP_TITLE_LOG}")" 2>/dev/null || true
@@ -152,3 +201,6 @@ format_title_prefix() {
 export -f set_title
 export -f update_title_with_context
 export -f format_title_prefix
+export -f detect_terminal_backend
+
+detect_terminal_backend

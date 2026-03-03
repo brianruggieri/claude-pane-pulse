@@ -9,8 +9,8 @@ _CCP_CORE_SOURCED=1
 VERSION="1.0.0"
 # shellcheck disable=SC2034
 SCRIPT_NAME="ccp"
-STATE_DIR="${HOME}/.config/claude-pane-pulse"
-SESSION_FILE="${STATE_DIR}/sessions.json"
+STATE_DIR="${STATE_DIR:-${HOME}/.config/claude-pane-pulse}"
+SESSION_FILE="${SESSION_FILE:-${STATE_DIR}/sessions.json}"
 
 # Colors
 GREEN='\033[0;32m'
