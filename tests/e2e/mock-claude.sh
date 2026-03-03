@@ -2,14 +2,24 @@
 # tests/e2e/mock-claude.sh - Simulates Claude Code TUI output for e2e testing
 #
 # Emits realistic-looking Claude Code output with delays so the ccp monitor
-# can detect each status transition.  The timing is compressed (10x faster
-# than real Claude) to keep the test suite quick.
+# can detect each status transition.  Also fires hook_runner.sh (via
+# CCP_HOOK_RUNNER, exported by bin/ccp) to simulate PreToolUse hooks for the
+# tool calls that write named statuses (🧪 Testing, ⬆️ Pushing, etc.).
 #
 # Usage: CCP_CLAUDE_CMD=tests/e2e/mock-claude.sh ccp "PR #1 - Test"
 
 DELAY="${MOCK_CLAUDE_DELAY:-0.4}"   # seconds between events; override to 0 for unit tests
 
 sleep_step() { sleep "${DELAY}"; }
+
+# fire_hook: simulate a PreToolUse hook call for a given tool + command.
+# Uses CCP_HOOK_RUNNER exported by bin/ccp; silently skips if not set.
+fire_hook() {
+    local tool="$1" cmd="${2:-}"
+    [[ -z "${CCP_HOOK_RUNNER:-}" ]] && return 0
+    printf '%s' "{\"tool_name\":\"${tool}\",\"tool_input\":{\"command\":\"${cmd}\"}}" \
+        | bash "${CCP_HOOK_RUNNER}" pre-tool 2>/dev/null || true
+}
 
 # ── Startup banner ────────────────────────────────────────────────────────────
 printf '\r\n'
@@ -27,6 +37,7 @@ printf 'Reading src/math.js...\r\n'
 sleep_step
 
 # ── Phase 2: Run tests → Testing ──────────────────────────────────────────────
+fire_hook "Bash" "npm test"
 printf 'Running the test suite to see what is failing.\r\n'
 printf 'npm test\r\n'
 sleep_step
@@ -46,6 +57,7 @@ printf 'Building the fix...\r\n'
 sleep_step
 
 # ── Phase 4: Run tests again → Tests passed ───────────────────────────────────
+fire_hook "Bash" "npm test"
 printf 'npm test\r\n'
 sleep_step
 printf '> jest --no-coverage\r\n'
@@ -63,6 +75,7 @@ printf '[main abc1234] fix: correct off-by-one in add()\r\n'
 sleep_step
 
 # ── Phase 6: Git push → Pushing ───────────────────────────────────────────────
+fire_hook "Bash" "git push origin main"
 printf 'git push origin main\r\n'
 sleep_step
 printf 'Enumerating objects: 5, done.\r\n'
