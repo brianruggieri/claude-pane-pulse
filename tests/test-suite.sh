@@ -18,6 +18,7 @@ source "${LIB_DIR}/hooks.sh"
 STATE_DIR=$(mktemp -d)
 SESSION_FILE="${STATE_DIR}/sessions.json"
 export STATE_DIR SESSION_FILE
+export CCP_DISABLE_PROMPT_DISTILL=1
 echo '[]' > "${SESSION_FILE}"
 
 # ── Test framework ────────────────────────────────────────────────────────────
@@ -149,11 +150,59 @@ echo ""
 echo "set_title()"
 
 # Capture escape sequences
+CCP_TERMINAL_BACKEND="osc1"
 title_output=$(set_title "test title" 2>/dev/null | cat -v)
 # On iTerm2/modern terminals (TERM_PROGRAM unset in tests = iTerm2 path):
 # title goes in OSC 1 (per-pane icon name); OSC 2 (window/app title) is cleared.
 assert_contains "emits ESC]1; per-pane icon title" "^[]1;test title^G" "${title_output}"
 assert_contains "emits ESC]2; cleared (empty)"     "^[]2;^G"           "${title_output}"
+unset CCP_TERMINAL_BACKEND
+
+# ── Tests: detect_terminal_backend ────────────────────────────────────────────
+
+echo ""
+echo "detect_terminal_backend()"
+
+_saved_term_program="${TERM_PROGRAM-}"
+_saved_tmux="${TMUX-}"
+_saved_kitty_pid="${KITTY_PID-}"
+unset TMUX KITTY_PID
+
+TERM_PROGRAM="iTerm.app"
+detect_terminal_backend
+assert_equals "TERM_PROGRAM=iTerm.app → iterm2" "iterm2" "${CCP_TERMINAL_BACKEND}"
+
+TERM_PROGRAM="Apple_Terminal"
+detect_terminal_backend
+assert_equals "TERM_PROGRAM=Apple_Terminal → apple-terminal" "apple-terminal" "${CCP_TERMINAL_BACKEND}"
+
+TERM_PROGRAM="WezTerm"
+detect_terminal_backend
+assert_equals "TERM_PROGRAM=WezTerm → wezterm" "wezterm" "${CCP_TERMINAL_BACKEND}"
+
+TERM_PROGRAM="ghostty"
+detect_terminal_backend
+assert_equals "TERM_PROGRAM=ghostty → ghostty" "ghostty" "${CCP_TERMINAL_BACKEND}"
+
+unset TERM_PROGRAM KITTY_PID TMUX
+detect_terminal_backend
+assert_equals "no env vars → osc2" "osc2" "${CCP_TERMINAL_BACKEND}"
+
+if [[ -n "${_saved_term_program}" ]]; then
+    TERM_PROGRAM="${_saved_term_program}"
+else
+    unset TERM_PROGRAM
+fi
+if [[ -n "${_saved_tmux}" ]]; then
+    TMUX="${_saved_tmux}"
+else
+    unset TMUX
+fi
+if [[ -n "${_saved_kitty_pid}" ]]; then
+    KITTY_PID="${_saved_kitty_pid}"
+else
+    unset KITTY_PID
+fi
 
 # ── Tests: session management ─────────────────────────────────────────────────
 
@@ -223,6 +272,8 @@ echo "status_to_priority()"
 
 assert_equals "Error → 100"         "100" "$(status_to_priority "🐛 Error")"
 assert_equals "Tests failed → 90"   "90"  "$(status_to_priority "❌ Tests failed")"
+assert_equals "Awaiting approval → 88" "88" "$(status_to_priority "⏸️ Awaiting approval")"
+assert_equals "Input needed → 85"   "85"  "$(status_to_priority "🙋 Input needed")"
 assert_equals "Building → 80"       "80"  "$(status_to_priority "🔨 Building")"
 assert_equals "Testing → 80"        "80"  "$(status_to_priority "🧪 Testing")"
 assert_equals "Installing → 80"     "80"  "$(status_to_priority "📦 Installing")"
@@ -233,9 +284,11 @@ assert_equals "Docker → 70"         "70"  "$(status_to_priority "🐳 Docker")
 assert_equals "Delegating → 70"     "70"  "$(status_to_priority "🤖 Delegating")"
 assert_equals "Editing → 65"        "65"  "$(status_to_priority "✏️ Editing")"
 assert_equals "Tests passed → 60"   "60"  "$(status_to_priority "✅ Tests passed")"
+assert_equals "Completed → 60"      "60"  "$(status_to_priority "🏁 Completed")"
 assert_equals "Running → 55"        "55"  "$(status_to_priority "🖥️ Running")"
 assert_equals "Reading → 55"        "55"  "$(status_to_priority "📖 Reading")"
 assert_equals "Browsing → 55"       "55"  "$(status_to_priority "🌐 Browsing")"
+assert_equals "Session started → 52" "52" "$(status_to_priority "🚀 Session started")"
 assert_equals "unknown → 50"        "50"  "$(status_to_priority "🔧 SomeTool")"
 
 # ── Tests: hook_runner.sh ─────────────────────────────────────────────────────
@@ -338,6 +391,133 @@ echo '{}' \
 result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_empty "stop empties status file"  "${result}"
 
+# post-tool handler writes completion statuses from Bash output
+printf '🧪 Testing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"3 tests passed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: tests passed → ✅ Tests passed" "✅ Tests passed" "${result}"
+
+printf '🧪 Testing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"2 tests failed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: tests failed → ❌ Tests failed" "❌ Tests failed" "${result}"
+
+printf '🧪 Testing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"fix\""},"tool_response":"[main abc123] fix"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git commit output → 💾 Committed" "💾 Committed" "${result}"
+
+printf '✏️ Editing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Read","tool_input":{},"tool_response":"3 tests passed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: non-Bash leaves status unchanged" "✏️ Editing" "${result}"
+
+printf '🧪 Testing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"error":"exit 1"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool-failure && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool-failure: Bash test command → ❌ Tests failed" "❌ Tests failed" "${result}"
+
+printf '✏️ Editing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"error":"boom"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool-failure && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool-failure: generic failure → 🐛 Error" "🐛 Error" "${result}"
+
+# event handler: quiet (default) high-signal coverage
+result=$(echo '{"permission":"needed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event PermissionRequest && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event quiet: PermissionRequest → ⏸️ Awaiting approval" "⏸️ Awaiting approval" "${result}"
+
+result=$(echo '{"message":"Action required: choose one option"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event Notification && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event quiet: Notification action-needed → 🙋 Input needed" "🙋 Input needed" "${result}"
+
+printf '✏️ Editing' > "${TMP_STATUS}"
+result=$(echo '{"message":"Background refresh complete"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event Notification && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event quiet: generic Notification leaves status unchanged" "✏️ Editing" "${result}"
+
+result=$(echo '{"task":"done"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event TaskCompleted && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event quiet: TaskCompleted → 🏁 Completed" "🏁 Completed" "${result}"
+
+result=$(echo '{"reason":"clear"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event SessionEnd && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event quiet: SessionEnd clear → 🏁 Completed" "🏁 Completed" "${result}"
+
+printf '✏️ Editing' > "${TMP_STATUS}"
+result=$(echo '{"reason":"manual"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event SessionStart && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event quiet: SessionStart suppressed (verbose-only)" "✏️ Editing" "${result}"
+
+printf '✏️ Editing' > "${TMP_STATUS}"
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event UnknownFutureEvent && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event quiet: unknown event suppressed" "✏️ Editing" "${result}"
+
+# event handler: verbose profile
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event SessionStart && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: SessionStart → 🚀 Session started" "🚀 Session started" "${result}"
+
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event PreCompact && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: PreCompact → 🧠 Compacting" "🧠 Compacting" "${result}"
+
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event SubagentStart && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: SubagentStart → 🤖 Subagent started" "🤖 Subagent started" "${result}"
+
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event SubagentStop && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: SubagentStop → ✅ Subagent finished" "✅ Subagent finished" "${result}"
+
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event TeammateIdle && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: TeammateIdle → 👥 Teammate idle" "👥 Teammate idle" "${result}"
+
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event ConfigChange && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: ConfigChange → ⚙️ Config changed" "⚙️ Config changed" "${result}"
+
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event WorktreeCreate && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: WorktreeCreate → 🌿 Worktree created" "🌿 Worktree created" "${result}"
+
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event WorktreeRemove && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: WorktreeRemove → 🧹 Worktree removed" "🧹 Worktree removed" "${result}"
+
+result=$(echo '{"message":"Background refresh complete"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event Notification && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: generic Notification → 🔔 Notification" "🔔 Notification" "${result}"
+
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event UnknownFutureEvent && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: unknown event fallback" "🔔 UnknownFutureEvent" "${result}"
+
 # hook_runner exits 0 with no env vars set (safe no-op)
 exit_code=0
 echo '{"tool_name":"Edit"}' | bash "${LIB_DIR}/hook_runner.sh" pre-tool || exit_code=$?
@@ -364,12 +544,54 @@ assert_equals "UserPromptSubmit hook injected" "1"  "${prompt_count}"
 stop_count=$(jq '.hooks.Stop | length' "${settings_path}" 2>/dev/null || echo 0)
 assert_equals "Stop hook injected"             "1"  "${stop_count}"
 
+post_count=$(jq '.hooks.PostToolUse | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "PostToolUse hook injected"      "1"  "${post_count}"
+
+post_fail_count=$(jq '.hooks.PostToolUseFailure | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "PostToolUseFailure hook injected" "1" "${post_fail_count}"
+
+permission_count=$(jq '.hooks.PermissionRequest | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "PermissionRequest hook injected" "1" "${permission_count}"
+
+notification_count=$(jq '.hooks.Notification | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "Notification hook injected" "1" "${notification_count}"
+
+task_completed_count=$(jq '.hooks.TaskCompleted | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "TaskCompleted hook injected" "1" "${task_completed_count}"
+
+session_start_count=$(jq '.hooks.SessionStart | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "SessionStart hook injected" "1" "${session_start_count}"
+
+session_end_count=$(jq '.hooks.SessionEnd | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "SessionEnd hook injected" "1" "${session_end_count}"
+
+pre_compact_count=$(jq '.hooks.PreCompact | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "PreCompact hook injected" "1" "${pre_compact_count}"
+
+sub_start_count=$(jq '.hooks.SubagentStart | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "SubagentStart hook injected" "1" "${sub_start_count}"
+
+sub_stop_count=$(jq '.hooks.SubagentStop | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "SubagentStop hook injected" "1" "${sub_stop_count}"
+
+teammate_idle_count=$(jq '.hooks.TeammateIdle | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "TeammateIdle hook injected" "1" "${teammate_idle_count}"
+
+config_change_count=$(jq '.hooks.ConfigChange | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "ConfigChange hook injected" "1" "${config_change_count}"
+
+worktree_create_count=$(jq '.hooks.WorktreeCreate | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "WorktreeCreate hook injected" "1" "${worktree_create_count}"
+
+worktree_remove_count=$(jq '.hooks.WorktreeRemove | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "WorktreeRemove hook injected" "1" "${worktree_remove_count}"
+
 # hook command references the runner
 hook_cmd=$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "${settings_path}" 2>/dev/null || echo "")
 assert_contains "PreToolUse command references hook_runner" "hook_runner.sh" "${hook_cmd}"
 assert_contains "PreToolUse command calls pre-tool"         "pre-tool"       "${hook_cmd}"
 
-# hook has async:true and timeout:1000
+# hook has async:true
 hook_async=$(jq -r '.hooks.PreToolUse[0].hooks[0].async' "${settings_path}" 2>/dev/null || echo "")
 assert_equals "PreToolUse async:true" "true" "${hook_async}"
 
@@ -377,6 +599,12 @@ assert_equals "PreToolUse async:true" "true" "${hook_async}"
 setup_ccp_hooks "${HOOKS_TMP_DIR}" "${LIB_DIR}/hook_runner.sh" > /dev/null
 pre_count2=$(jq '.hooks.PreToolUse | length' "${settings_path}" 2>/dev/null || echo 0)
 assert_equals "second setup deduplicates (stays at 1)" "1" "${pre_count2}"
+post_count2=$(jq '.hooks.PostToolUse | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "second setup deduplicates PostToolUse (stays at 1)" "1" "${post_count2}"
+post_fail_count2=$(jq '.hooks.PostToolUseFailure | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "second setup deduplicates PostToolUseFailure (stays at 1)" "1" "${post_fail_count2}"
+session_start_count2=$(jq '.hooks.SessionStart | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "second setup deduplicates SessionStart (stays at 1)" "1" "${session_start_count2}"
 
 # teardown removes the current-PID hook entry
 teardown_ccp_hooks "${settings_path}"
@@ -398,6 +626,37 @@ assert_equals "teardown preserves non-CCP hooks" "1" "${remaining}"
 
 rm -rf "${HOOKS_TMP_DIR}"
 rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
+# ── Tests: bin/ccp status profile parsing ─────────────────────────────────────
+
+echo ""
+echo "bin/ccp --status-profile"
+
+BIN_CCP="${PROJECT_DIR}/bin/ccp"
+CLI_TMP_DIR=$(mktemp -d)
+CLI_STATE_DIR="${CLI_TMP_DIR}/state"
+mkdir -p "${CLI_STATE_DIR}"
+CLI_SESSION_FILE="${CLI_STATE_DIR}/sessions.json"
+echo '[]' > "${CLI_SESSION_FILE}"
+
+cli_exit=0
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --status-profile verbose --no-dynamic "status-profile test" \
+    >/dev/null 2>/dev/null || cli_exit=$?
+assert_equals "bin/ccp: --status-profile verbose succeeds" "0" "${cli_exit}"
+
+cli_exit=0
+cli_err="${CLI_TMP_DIR}/invalid-profile.err"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --status-profile noisy --no-dynamic "status-profile test" \
+    >/dev/null 2>"${cli_err}" || cli_exit=$?
+assert_equals "bin/ccp: invalid --status-profile exits 1" "1" "${cli_exit}"
+assert_contains "bin/ccp: invalid profile emits clear error" \
+    "Invalid status profile 'noisy'" "$(cat "${cli_err}" 2>/dev/null || true)"
+
+rm -rf "${CLI_TMP_DIR}"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

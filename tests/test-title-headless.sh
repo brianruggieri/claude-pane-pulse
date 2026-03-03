@@ -49,6 +49,9 @@ assert_not_contains() {
 echo ""
 echo "update_title_with_context — title bar output"
 
+# Force OSC1 backend for deterministic escape-sequence assertions in this section.
+CCP_TERMINAL_BACKEND="osc1"
+
 # When context is empty, window title (ESC]2;) should be blank, NOT base_title.
 # This prevents iTerm2 from showing "base — base — Python · ccp — size".
 raw_empty=$(update_title_with_context "myproject (main)" "" 2>/dev/null | cat -v)
@@ -71,12 +74,12 @@ assert_contains "log: idle entry is just base_title"      "proj (feat)"         
 assert_not_contains "log: idle has no pipe separator"     "proj (feat) | proj"       "${log_content}"
 assert_contains "log: active entry shows separator"       "proj (feat) | 🧪 Testing..." "${log_content}"
 
-# ── Section 2: monitor loop — no doubling on startup ──────────────────────────
-# Mirrors the current monitor_claude_output heartbeat path exactly:
-# prepended spinner, % 6 frame counter, $(< file), last_hook_check gate.
+unset CCP_TERMINAL_BACKEND
+
+# ── Section 2: title_updater — no doubling on startup ─────────────────────────
 
 echo ""
-echo "monitor loop — startup title (no context yet)"
+echo "title_updater — startup title (no context yet)"
 
 > "${TITLE_LOG}"
 STATUS_FILE="${STATE_DIR}/status.$$.txt"
@@ -85,76 +88,9 @@ export CCP_STATUS_FILE="${STATUS_FILE}"
 export CCP_CONTEXT_FILE="${CONTEXT_FILE}"
 rm -f "${STATUS_FILE}" "${CONTEXT_FILE}"
 
-PIPE="${STATE_DIR}/pipe.$$"
-mkfifo "${PIPE}"
-
-# Run the monitor subshell for 2 seconds, feeding it silence (no PTY output)
-(
-    while true; do sleep 0.1; done
-) > "${PIPE}" &
-FEED_PID=$!
-
-(
-    set +e
-    source "${LIB_DIR}/monitor.sh"
-    current_priority=0
-    current_context=""
-    frame_counter=0
-    task_summary=""
-    clean_summary=""
-    prev_display_context=""
-    last_hook_check=$SECONDS
-    s_file="${CCP_STATUS_FILE:-}"
-    c_file="${CCP_CONTEXT_FILE:-}"
-    update_title_with_context "myproject (main)" "" >/dev/null 2>&1 || true
-    for _ in 1 2; do   # two heartbeat cycles
-        IFS= read -r -t 1 line < "${PIPE}" || true
-        [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 6 ))
-        current_time=$SECONDS
-        if [[ $((current_time - last_hook_check)) -ge 1 ]]; then
-            last_hook_check=$current_time
-            hook_status=""
-            [[ -n "${s_file}" && -f "${s_file}" ]] && hook_status=$(< "${s_file}") || hook_status=""
-            if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
-                current_context="${hook_status}"
-                current_priority=$(status_to_priority "${hook_status}")
-            fi
-            new_sum=""
-            [[ -n "${c_file}" && -f "${c_file}" ]] && new_sum=$(< "${c_file}") || new_sum=""
-            if [[ -n "${new_sum}" && "${new_sum}" != "${task_summary}" ]]; then
-                task_summary="${new_sum}"
-                clean_summary="${task_summary}"
-            fi
-        fi
-        _spinner=""
-        if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) ]]; then
-            case $((frame_counter % 6)) in
-                0) _spinner="·" ;; 1) _spinner="✢" ;; 2) _spinner="✳" ;;
-                3) _spinner="✶" ;; 4) _spinner="✻" ;; 5) _spinner="✽" ;;
-            esac
-        fi
-        display_content=""
-        if [[ -n "${clean_summary}" && -n "${current_context}" ]]; then
-            display_content="${clean_summary} | ${current_context}"
-        elif [[ -n "${current_context}" ]]; then
-            display_content="${current_context}"
-        fi
-        display_context=""
-        if [[ -n "${_spinner}" && -n "${display_content}" ]]; then
-            display_context="${_spinner} ${display_content}"
-        else
-            display_context="${display_content}"
-        fi
-        if [[ "${display_context}" != "${prev_display_context}" ]]; then
-            update_title_with_context "myproject (main)" "${display_context}" >/dev/null 2>&1 || true
-            prev_display_context="${display_context}"
-        fi
-    done
-) 2>/dev/null
-
-kill "${FEED_PID}" 2>/dev/null || true
-wait "${FEED_PID}" 2>/dev/null || true
-rm -f "${PIPE}"
+title_updater "myproject (main)"
+sleep 1.2
+cleanup_monitor
 
 startup_log=$(cat "${TITLE_LOG}")
 assert_not_contains "no doubling on startup" \
@@ -162,87 +98,19 @@ assert_not_contains "no doubling on startup" \
 first_line=$(head -1 "${TITLE_LOG}")
 assert_equals "first title is clean base_title" "myproject (main)" "${first_line}"
 
-# ── Section 3: monitor loop — hook data flows to title ────────────────────────
+# ── Section 3: title_updater — hook data flows to title ───────────────────────
 
 echo ""
-echo "monitor loop — hook status appears in title"
+echo "title_updater — hook status appears in title"
 
 > "${TITLE_LOG}"
 rm -f "${STATUS_FILE}" "${CONTEXT_FILE}"
-PIPE2="${STATE_DIR}/pipe2.$$"
-mkfifo "${PIPE2}"
-
-(while true; do sleep 0.1; done) > "${PIPE2}" &
-FEED2_PID=$!
-
-(
-    set +e
-    source "${LIB_DIR}/monitor.sh"
-    current_priority=0
-    current_context=""
-    frame_counter=0
-    task_summary=""
-    clean_summary=""
-    prev_display_context=""
-    last_hook_check=$SECONDS
-    s_file="${CCP_STATUS_FILE:-}"
-    c_file="${CCP_CONTEXT_FILE:-}"
-
-    # Simulate hook firing mid-session
-    sleep 0.3
-    printf '✏️ Editing' > "${s_file}"
-    printf 'fix the null check in parser' > "${c_file}"
-    sleep 0.2
-
-    update_title_with_context "myproject (main)" "" >/dev/null 2>&1 || true
-    for _ in 1 2 3 4; do
-        IFS= read -r -t 1 line < "${PIPE2}" || true
-        [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 6 ))
-        current_time=$SECONDS
-        if [[ $((current_time - last_hook_check)) -ge 1 ]]; then
-            last_hook_check=$current_time
-            hook_status=""
-            [[ -n "${s_file}" && -f "${s_file}" ]] && hook_status=$(< "${s_file}") || hook_status=""
-            if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
-                current_context="${hook_status}"
-                current_priority=$(status_to_priority "${hook_status}")
-            fi
-            new_sum=""
-            [[ -n "${c_file}" && -f "${c_file}" ]] && new_sum=$(< "${c_file}") || new_sum=""
-            if [[ -n "${new_sum}" && "${new_sum}" != "${task_summary}" ]]; then
-                task_summary="${new_sum}"
-                clean_summary="${task_summary}"
-            fi
-        fi
-        _spinner=""
-        if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) ]]; then
-            case $((frame_counter % 6)) in
-                0) _spinner="·" ;; 1) _spinner="✢" ;; 2) _spinner="✳" ;;
-                3) _spinner="✶" ;; 4) _spinner="✻" ;; 5) _spinner="✽" ;;
-            esac
-        fi
-        display_content=""
-        if [[ -n "${clean_summary}" && -n "${current_context}" ]]; then
-            display_content="${clean_summary} | ${current_context}"
-        elif [[ -n "${current_context}" ]]; then
-            display_content="${current_context}"
-        fi
-        display_context=""
-        if [[ -n "${_spinner}" && -n "${display_content}" ]]; then
-            display_context="${_spinner} ${display_content}"
-        else
-            display_context="${display_content}"
-        fi
-        if [[ "${display_context}" != "${prev_display_context}" ]]; then
-            update_title_with_context "myproject (main)" "${display_context}" >/dev/null 2>&1 || true
-            prev_display_context="${display_context}"
-        fi
-    done
-) 2>/dev/null
-
-kill "${FEED2_PID}" 2>/dev/null || true
-wait "${FEED2_PID}" 2>/dev/null || true
-rm -f "${PIPE2}"
+title_updater "myproject (main)"
+sleep 0.3
+printf '✏️ Editing' > "${STATUS_FILE}"
+printf 'fix the null check in parser' > "${CONTEXT_FILE}"
+sleep 1.5
+cleanup_monitor
 
 hook_log=$(cat "${TITLE_LOG}")
 assert_contains "hook status appears in title log" "✏️ Editing"  "${hook_log}"
@@ -257,23 +125,11 @@ echo "stop hook → idle title"
 
 > "${TITLE_LOG}"
 printf '🧪 Testing' > "${STATUS_FILE}"
-# Simulate stop hook emptying the file
+title_updater "myproject (main)"
+sleep 1.2
 printf '' > "${STATUS_FILE}"
-
-(
-    set +e
-    source "${LIB_DIR}/monitor.sh"
-    current_priority=80
-    current_context="🧪 Testing"
-    s_file="${CCP_STATUS_FILE:-}"
-    hook_status=""
-    [[ -n "${s_file}" && -f "${s_file}" ]] && hook_status=$(< "${s_file}") || hook_status=""
-    if [[ -z "${hook_status}" && "${current_priority}" -gt 10 ]]; then
-        current_priority=10
-        current_context="💤 Idle"
-    fi
-    update_title_with_context "myproject (main)" "${current_context}" >/dev/null 2>&1 || true
-) 2>/dev/null
+sleep 1.2
+cleanup_monitor
 
 stop_log=$(cat "${TITLE_LOG}")
 assert_contains "stop hook triggers idle in title" "💤 Idle" "${stop_log}"

@@ -3,8 +3,8 @@
 #
 # Emits realistic-looking Claude Code output with delays so the ccp monitor
 # can detect each status transition.  Also fires hook_runner.sh (via
-# CCP_HOOK_RUNNER, exported by bin/ccp) to simulate PreToolUse hooks for the
-# tool calls that write named statuses (🧪 Testing, ⬆️ Pushing, etc.).
+# CCP_HOOK_RUNNER, exported by bin/ccp) to simulate PreToolUse/PostToolUse
+# hooks for statuses and completion events.
 #
 # Usage: CCP_CLAUDE_CMD=tests/e2e/mock-claude.sh ccp "PR #1 - Test"
 
@@ -17,8 +17,17 @@ sleep_step() { sleep "${DELAY}"; }
 fire_hook() {
     local tool="$1" cmd="${2:-}"
     [[ -z "${CCP_HOOK_RUNNER:-}" ]] && return 0
-    printf '%s' "{\"tool_name\":\"${tool}\",\"tool_input\":{\"command\":\"${cmd}\"}}" \
+    jq -nc --arg tool "${tool}" --arg cmd "${cmd}" \
+        '{tool_name:$tool, tool_input:{command:$cmd}}' \
         | bash "${CCP_HOOK_RUNNER}" pre-tool 2>/dev/null || true
+}
+
+fire_post_hook() {
+    local tool="$1" cmd="$2" response="$3"
+    [[ -z "${CCP_HOOK_RUNNER:-}" ]] && return 0
+    jq -nc --arg tool "${tool}" --arg cmd "${cmd}" --arg response "${response}" \
+        '{tool_name:$tool, tool_input:{command:$cmd}, tool_response:$response}' \
+        | bash "${CCP_HOOK_RUNNER}" post-tool 2>/dev/null || true
 }
 
 # ── Startup banner ────────────────────────────────────────────────────────────
@@ -49,6 +58,7 @@ printf '  ● add › returns correct sum\r\n'
 printf '    Expected: 5\r\n'
 printf '    Received: 4\r\n'
 printf '1 test failed, 2 tests passed\r\n'
+fire_post_hook "Bash" "npm test" "1 test failed, 2 tests passed"
 sleep_step
 
 # ── Phase 3: Building / compiling ─────────────────────────────────────────────
@@ -65,6 +75,7 @@ sleep_step
 printf 'PASS tests/math.test.js\r\n'
 printf 'PASS tests/auth.test.js\r\n'
 printf '3 tests passed in 0.9s\r\n'
+fire_post_hook "Bash" "npm test" "3 tests passed in 0.9s"
 sleep_step
 
 # ── Phase 5: Git commit ────────────────────────────────────────────────────────
@@ -72,7 +83,9 @@ printf 'Tests pass. Committing the fix.\r\n'
 printf 'git commit -m "fix: correct off-by-one in add()"\r\n'
 sleep_step
 printf '[main abc1234] fix: correct off-by-one in add()\r\n'
-sleep_step
+fire_post_hook "Bash" "git commit -m \"fix: correct off-by-one in add()\"" "[main abc1234] fix: correct off-by-one in add()"
+# Allow the 1-second updater poll to observe the completion before next PreToolUse.
+sleep 1.2
 
 # ── Phase 6: Git push → Pushing ───────────────────────────────────────────────
 fire_hook "Bash" "git push origin main"

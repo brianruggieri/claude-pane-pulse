@@ -27,6 +27,7 @@ echo ""
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 TITLE_LOG="$(mktemp /tmp/ccp-e2e-titles.XXXXXX)"
+STATE_TMP="$(mktemp -d /tmp/ccp-e2e-state.XXXXXX)"
 MOCK_CLAUDE="${SCRIPT_DIR}/mock-claude.sh"
 chmod +x "${MOCK_CLAUDE}"
 
@@ -39,6 +40,7 @@ fi
 
 cleanup() {
     rm -f "${TITLE_LOG}"
+    rm -rf "${STATE_TMP}"
 }
 trap cleanup EXIT
 
@@ -48,6 +50,8 @@ echo ""
 
 export CCP_TITLE_LOG="${TITLE_LOG}"
 export CCP_CLAUDE_CMD="${MOCK_CLAUDE}"
+export STATE_DIR="${STATE_TMP}"
+export SESSION_FILE="${STATE_TMP}/sessions.json"
 
 # Run ccp with --no-dynamic first to test static title setting
 "${REPO_DIR}/bin/ccp" --no-dynamic "PR #89 - Fix auth" 2>/dev/null || true

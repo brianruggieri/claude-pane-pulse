@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# tests/test-chain.sh - Integration tests for the full ccp→pty→subprocess chain
+# tests/test-chain.sh - Integration tests for the full ccp hooks-only chain
 #
 # Tests what isolated unit tests cannot: that CCP_STATUS_FILE and CCP_CONTEXT_FILE
-# survive the full execution chain  ccp → pty_wrapper.py → subprocess → hook_runner.sh
+# survive a realistic execution chain ending in hook_runner.sh invocations.
 #
 # Also verifies hook_runner.sh behavior with real jq in a controlled environment.
 #
@@ -55,6 +55,7 @@ export CCP_STATUS_FILE="${STATUS_FILE}"
 export CCP_CONTEXT_FILE="${CONTEXT_FILE}"
 export CCP_HOOK_RUNNER="${LIB_DIR}/hook_runner.sh"
 export CCP_DEBUG_LOG="${DEBUG_LOG}"
+export CCP_DISABLE_PROMPT_DISTILL=1
 
 # Add homebrew to PATH for jq
 PATH="/opt/homebrew/bin:/usr/local/bin:${PATH}"
@@ -120,6 +121,19 @@ echo "🧪 Testing" > "${STATUS_FILE}"
 echo '{}' | bash "${LIB_DIR}/hook_runner.sh" stop
 assert_eq "stop clears status file" "" "$(cat "${STATUS_FILE}" 2>/dev/null || echo 'MISSING')"
 
+# Test: event quiet/verbose gating
+echo '{"message":"Action required: select a permission"}' \
+    | CCP_STATUS_PROFILE=quiet bash "${LIB_DIR}/hook_runner.sh" event Notification
+assert_eq "event quiet Notification action-needed → 🙋 Input needed" "🙋 Input needed" "$(cat "${STATUS_FILE}" 2>/dev/null || echo '')"
+
+echo "✏️ Editing" > "${STATUS_FILE}"
+echo '{"message":"Background refresh complete"}' \
+    | CCP_STATUS_PROFILE=quiet bash "${LIB_DIR}/hook_runner.sh" event Notification
+assert_eq "event quiet generic Notification suppressed" "✏️ Editing" "$(cat "${STATUS_FILE}" 2>/dev/null || echo '')"
+
+echo '{}' | CCP_STATUS_PROFILE=verbose bash "${LIB_DIR}/hook_runner.sh" event SessionStart
+assert_eq "event verbose SessionStart → 🚀 Session started" "🚀 Session started" "$(cat "${STATUS_FILE}" 2>/dev/null || echo '')"
+
 # Test: exit code is always 0
 exit_code=0
 echo 'not json at all }{' | bash "${LIB_DIR}/hook_runner.sh" pre-tool || exit_code=$?
@@ -134,10 +148,10 @@ assert_nonempty "debug log written" "$(cat "${DEBUG_LOG}" 2>/dev/null || echo ''
 [[ "${VERBOSE}" == "true" ]] && echo "--- debug log ---" && cat "${DEBUG_LOG}" && echo "---"
 
 echo ""
-echo "── Section 2: env vars flow through pty_wrapper.py ──"
+echo "── Section 2: hooks-only chain (no PTY wrapper) ──"
 
 # Build a fake "claude" that invokes hook_runner.sh directly (simulating what
-# the real claude would do when its hooks fire) and then exits.
+# real Claude Code hooks fire) and then exits.
 cat > "${FAKE_CLAUDE}" << 'FAKE_EOF'
 #!/usr/bin/env bash
 # Fake claude: fires hook_runner.sh the same way Claude Code would, then exits.
@@ -150,6 +164,10 @@ echo '{"prompt":"Chain test prompt from fake claude"}' \
 # Simulate PreToolUse (Read)
 echo '{"tool_name":"Read","tool_input":{"file_path":"README.md"}}' \
     | bash "${CCP_HOOK_RUNNER}" pre-tool
+
+# Simulate PostToolUse completion from Bash test output
+echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"7 tests passed"}' \
+    | bash "${CCP_HOOK_RUNNER}" post-tool
 
 # Save status before Stop clears it (so the test can assert on it)
 cp "${CCP_STATUS_FILE}" "${CCP_STATUS_FILE}.pre_stop" 2>/dev/null || true
@@ -164,32 +182,17 @@ chmod +x "${FAKE_CLAUDE}"
 # Reset files
 rm -f "${STATUS_FILE}" "${CONTEXT_FILE}"
 
-# Create named pipe
-mkfifo "${PIPE}"
-
-# Drain the pipe in background (pty_wrapper.py tees output there)
-drain_log="${TMP_DIR}/drain.log"
-cat "${PIPE}" > "${drain_log}" &
-drain_pid=$!
-
-# Run the full chain: pty_wrapper.py → fake_claude → hook_runner.sh
-python3 "${LIB_DIR}/pty_wrapper.py" "${PIPE}" bash "${FAKE_CLAUDE}" 2>/dev/null || true
-
-# Give drain a moment to flush
-kill "${drain_pid}" 2>/dev/null || true
-wait "${drain_pid}" 2>/dev/null || true
+# Run the hooks-only chain directly
+bash "${FAKE_CLAUDE}" 2>/dev/null || true
 
 # Check that hook_runner.sh was reached and wrote files
 context_val="$(cat "${CONTEXT_FILE}" 2>/dev/null || echo '')"
 status_val="$(cat "${STATUS_FILE}" 2>/dev/null || echo 'MISSING')"
 
 pre_stop_status="$(cat "${STATUS_FILE}.pre_stop" 2>/dev/null || echo '')"
-assert_contains "chain: context written via pty_wrapper" "Chain test prompt" "${context_val}"
-assert_eq       "chain: PreToolUse status written via pty_wrapper" "📖 Reading" "${pre_stop_status}"
-assert_eq       "chain: Stop cleared status via pty_wrapper" "" "${status_val}"
-
-# Verify fake claude output reached the drain (confirming pty is wired)
-assert_contains "chain: pty output reaches FIFO" "fake-claude-done" "$(cat "${drain_log}" 2>/dev/null || echo '')"
+assert_contains "chain: context written via hooks-only flow" "Chain test prompt" "${context_val}"
+assert_eq       "chain: PostToolUse wrote completion status" "✅ Tests passed" "${pre_stop_status}"
+assert_eq       "chain: Stop cleared status via hooks-only flow" "" "${status_val}"
 
 echo ""
 echo "── Section 3: setup_ccp_hooks deduplication ──"
@@ -207,15 +210,47 @@ settings_file=$(setup_ccp_hooks "${HOOKS_TEST_DIR}" "${CCP_HOOK_RUNNER}")
 pre_count=$(jq '.hooks.PreToolUse | length' "${settings_file}" 2>/dev/null || echo 0)
 prompt_count=$(jq '.hooks.UserPromptSubmit | length' "${settings_file}" 2>/dev/null || echo 0)
 stop_count=$(jq '.hooks.Stop | length' "${settings_file}" 2>/dev/null || echo 0)
+post_count=$(jq '.hooks.PostToolUse | length' "${settings_file}" 2>/dev/null || echo 0)
+post_fail_count=$(jq '.hooks.PostToolUseFailure | length' "${settings_file}" 2>/dev/null || echo 0)
+permission_count=$(jq '.hooks.PermissionRequest | length' "${settings_file}" 2>/dev/null || echo 0)
+notification_count=$(jq '.hooks.Notification | length' "${settings_file}" 2>/dev/null || echo 0)
+task_completed_count=$(jq '.hooks.TaskCompleted | length' "${settings_file}" 2>/dev/null || echo 0)
+session_start_count=$(jq '.hooks.SessionStart | length' "${settings_file}" 2>/dev/null || echo 0)
+session_end_count=$(jq '.hooks.SessionEnd | length' "${settings_file}" 2>/dev/null || echo 0)
+pre_compact_count=$(jq '.hooks.PreCompact | length' "${settings_file}" 2>/dev/null || echo 0)
+sub_start_count=$(jq '.hooks.SubagentStart | length' "${settings_file}" 2>/dev/null || echo 0)
+sub_stop_count=$(jq '.hooks.SubagentStop | length' "${settings_file}" 2>/dev/null || echo 0)
+teammate_idle_count=$(jq '.hooks.TeammateIdle | length' "${settings_file}" 2>/dev/null || echo 0)
+config_change_count=$(jq '.hooks.ConfigChange | length' "${settings_file}" 2>/dev/null || echo 0)
+worktree_create_count=$(jq '.hooks.WorktreeCreate | length' "${settings_file}" 2>/dev/null || echo 0)
+worktree_remove_count=$(jq '.hooks.WorktreeRemove | length' "${settings_file}" 2>/dev/null || echo 0)
 
 assert_eq "setup: PreToolUse has exactly 1 entry" "1" "${pre_count}"
 assert_eq "setup: UserPromptSubmit has exactly 1 entry" "1" "${prompt_count}"
 assert_eq "setup: Stop has exactly 1 entry" "1" "${stop_count}"
+assert_eq "setup: PostToolUse has exactly 1 entry" "1" "${post_count}"
+assert_eq "setup: PostToolUseFailure has exactly 1 entry" "1" "${post_fail_count}"
+assert_eq "setup: PermissionRequest has exactly 1 entry" "1" "${permission_count}"
+assert_eq "setup: Notification has exactly 1 entry" "1" "${notification_count}"
+assert_eq "setup: TaskCompleted has exactly 1 entry" "1" "${task_completed_count}"
+assert_eq "setup: SessionStart has exactly 1 entry" "1" "${session_start_count}"
+assert_eq "setup: SessionEnd has exactly 1 entry" "1" "${session_end_count}"
+assert_eq "setup: PreCompact has exactly 1 entry" "1" "${pre_compact_count}"
+assert_eq "setup: SubagentStart has exactly 1 entry" "1" "${sub_start_count}"
+assert_eq "setup: SubagentStop has exactly 1 entry" "1" "${sub_stop_count}"
+assert_eq "setup: TeammateIdle has exactly 1 entry" "1" "${teammate_idle_count}"
+assert_eq "setup: ConfigChange has exactly 1 entry" "1" "${config_change_count}"
+assert_eq "setup: WorktreeCreate has exactly 1 entry" "1" "${worktree_create_count}"
+assert_eq "setup: WorktreeRemove has exactly 1 entry" "1" "${worktree_remove_count}"
 
 # Run setup again (simulates restart without teardown) — should still have 1 of each
 settings_file2=$(setup_ccp_hooks "${HOOKS_TEST_DIR}" "${CCP_HOOK_RUNNER}")
 pre_count2=$(jq '.hooks.PreToolUse | length' "${settings_file2}" 2>/dev/null || echo 0)
+post_count2=$(jq '.hooks.PostToolUse | length' "${settings_file2}" 2>/dev/null || echo 0)
+session_start_count2=$(jq '.hooks.SessionStart | length' "${settings_file2}" 2>/dev/null || echo 0)
 assert_eq "setup: dedup prevents accumulation on re-run" "1" "${pre_count2}"
+assert_eq "setup: PostToolUse dedup prevents accumulation on re-run" "1" "${post_count2}"
+assert_eq "setup: SessionStart dedup prevents accumulation on re-run" "1" "${session_start_count2}"
 
 # Teardown removes our hooks
 teardown_ccp_hooks "${settings_file}"

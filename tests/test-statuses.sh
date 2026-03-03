@@ -7,12 +7,9 @@
 #   3. Title composition: context file + status file → "summary | status" in title log
 #   4. clean_summary strips project name parenthetical from context
 #   5. Priority ordering: lower-priority status does not override active higher-priority status
-#   6. FIFO liveness → Thinking lift (monitor integration via CCP_CLAUDE_CMD)
-#   7. Idle suppression: stop hook + FIFO drain delay (monitor integration)
-#   8. Animation spinner chars are all 6 · ✢ ✳ ✶ ✻ ✽ and appear prepended in title
-#
-# Uses CCP_CLAUDE_CMD to drive monitor_claude_output with a controlled driver script.
-# This is the official test-override hook documented in lib/core.sh.
+#   6. title_updater integration via hook-written status/context files
+#   7. Idle transition when Stop clears status
+#   8. Animation spinner chars appear prepended in title
 #
 # Usage: bash tests/test-statuses.sh [--verbose]
 
@@ -93,6 +90,8 @@ echo "── Section 1: status_to_priority ──"
 
 assert_eq "🐛 Error → 100"        "100" "$(status_to_priority '🐛 Error')"
 assert_eq "❌ Tests failed → 90"  "90"  "$(status_to_priority '❌ Tests failed')"
+assert_eq "⏸️ Awaiting approval → 88" "88" "$(status_to_priority '⏸️ Awaiting approval')"
+assert_eq "🙋 Input needed → 85"  "85"  "$(status_to_priority '🙋 Input needed')"
 assert_eq "🔨 Building → 80"      "80"  "$(status_to_priority '🔨 Building')"
 assert_eq "🧪 Testing → 80"       "80"  "$(status_to_priority '🧪 Testing')"
 assert_eq "📦 Installing → 80"    "80"  "$(status_to_priority '📦 Installing')"
@@ -105,9 +104,11 @@ assert_eq "🤖 Delegating → 70"    "70"  "$(status_to_priority '🤖 Delegati
 assert_eq "✏️ Editing → 65"       "65"  "$(status_to_priority '✏️ Editing')"
 assert_eq "✅ Tests passed → 60"  "60"  "$(status_to_priority '✅ Tests passed')"
 assert_eq "💾 Committed → 60"     "60"  "$(status_to_priority '💾 Committed')"
+assert_eq "🏁 Completed → 60"     "60"  "$(status_to_priority '🏁 Completed')"
 assert_eq "📖 Reading → 55"       "55"  "$(status_to_priority '📖 Reading')"
 assert_eq "🌐 Browsing → 55"      "55"  "$(status_to_priority '🌐 Browsing')"
 assert_eq "🖥️ Running → 55"       "55"  "$(status_to_priority '🖥️ Running')"
+assert_eq "🚀 Session started → 52" "52" "$(status_to_priority '🚀 Session started')"
 
 # ── Section 2: completion event priority bypass via extract_context ────────────
 # ✅ Tests passed (priority 60) must be returned even when active status is higher.
@@ -148,9 +149,10 @@ echo ""
 echo "── Section 3: hook status → title log ──"
 
 for status_str in \
-    "🐛 Error" "❌ Tests failed" "🔨 Building" "🧪 Testing" "📦 Installing" \
+    "🐛 Error" "❌ Tests failed" "⏸️ Awaiting approval" "🙋 Input needed" \
+    "🔨 Building" "🧪 Testing" "📦 Installing" \
     "⬆️ Pushing" "⬇️ Pulling" "🔀 Merging" "🐳 Docker" "💭 Thinking" \
-    "🤖 Delegating" "✏️ Editing" "✅ Tests passed" "💾 Committed" \
+    "🤖 Delegating" "✏️ Editing" "✅ Tests passed" "💾 Committed" "🏁 Completed" \
     "📖 Reading" "🌐 Browsing" "🖥️ Running" "💤 Idle"; do
 
     > "${TITLE_LOG}"
@@ -228,10 +230,20 @@ echo ""
 echo "── Section 6: priority ordering ──"
 
 building_pri=$(status_to_priority "🔨 Building")
+await_pri=$(status_to_priority "⏸️ Awaiting approval")
+input_pri=$(status_to_priority "🙋 Input needed")
 running_pri=$(status_to_priority "🖥️ Running")
 testing_pri=$(status_to_priority "🧪 Testing")
 passed_pri=$(status_to_priority "✅ Tests passed")
 error_pri=$(status_to_priority "🐛 Error")
+
+[[ "${await_pri}" -gt "${building_pri}" ]] \
+    && pass "Awaiting approval (${await_pri}) > Building (${building_pri})" \
+    || fail "Awaiting approval (${await_pri}) > Building (${building_pri})" "awaiting > building" "not true"
+
+[[ "${input_pri}" -gt "${building_pri}" ]] \
+    && pass "Input needed (${input_pri}) > Building (${building_pri})" \
+    || fail "Input needed (${input_pri}) > Building (${building_pri})" "input > building" "not true"
 
 [[ "${running_pri}" -lt "${building_pri}" ]] \
     && pass "Running (${running_pri}) < Building (${building_pri})" \
@@ -255,99 +267,58 @@ else
     fail "bypass condition correctly matches '${new_ctx}'" "(match)" "(no match)"
 fi
 
-# ── Section 7: monitor integration — FIFO liveness → Thinking lift ─────────────
-# Requires a running monitor. Uses CCP_CLAUDE_CMD (official test hook in core.sh).
-# Driver: prints 1 line after 0.5s (to trigger FIFO liveness check), then exits.
+# ── Section 7: title_updater integration — hook status write ───────────────────
+# Start title_updater, then simulate hooks by writing status/context files.
 
 echo ""
-echo "── Section 7: FIFO liveness → Thinking (monitor integration) ──"
-
-DRIVER7="${TMP}/driver7.sh"
-cat > "${DRIVER7}" << 'DRIVER_EOF'
-#!/usr/bin/env bash
-sleep 0.5
-echo "output line to trigger FIFO activity"
-sleep 1
-DRIVER_EOF
-chmod +x "${DRIVER7}"
-export CCP_CLAUDE_CMD="${DRIVER7}"
+echo "── Section 7: hook status write (title_updater integration) ──"
 
 > "${TITLE_LOG}"
 rm -f "${STATUS_FILE}" "${CONTEXT_FILE}"
-# No status file pre-set — monitor starts at priority=0 (no status)
-monitor_claude_output "myproject (main)" 2>/dev/null || true
+title_updater "myproject (main)"
+sleep 1.2
+printf '💭 Thinking' > "${STATUS_FILE}"
+printf 'Investigate auth timeout' > "${CONTEXT_FILE}"
+sleep 1.2
+cleanup_monitor
 
-fifo_log=$(cat "${TITLE_LOG}")
+hook_log=$(cat "${TITLE_LOG}")
 [[ "${VERBOSE}" == "true" ]] && echo "--- title log ---" && cat "${TITLE_LOG}" && echo "---"
-assert_contains "FIFO line lifts priority to Thinking" "💭 Thinking" "${fifo_log}"
+assert_contains "hook status appears in title log" "💭 Thinking" "${hook_log}"
+assert_contains "context appears in title log" "Investigate auth timeout" "${hook_log}"
 
-unset CCP_CLAUDE_CMD
-
-# ── Section 8: monitor integration — idle suppression after stop hook ──────────
-# Driver: prints output (FIFO active), then exits quickly.
-# We pre-write empty status to simulate the Stop hook.
-# Monitor should NOT go idle immediately; idle comes after 3s FIFO silence.
+# ── Section 8: title_updater integration — stop hook idle ──────────────────────
+# Write an active status, then clear it to simulate Stop hook.
 
 echo ""
-echo "── Section 8: idle suppression (monitor integration) ──"
-
-DRIVER8="${TMP}/driver8.sh"
-# Driver clears the status file (simulates Stop hook) after emitting FIFO output,
-# then stays alive for 5s so the monitor can detect 3s+ of FIFO silence → idle.
-cat > "${DRIVER8}" << 'DRIVER_EOF'
-#!/usr/bin/env bash
-# Emit output (FIFO active — suppresses premature idle)
-for i in 1 2 3; do
-    echo "output ${i}"
-    sleep 0.5
-done
-# Simulate Stop hook: clear the status file
-printf '' > "${CCP_STATUS_FILE}"
-# Stay alive with FIFO silent so the monitor's 3s drain timer can expire
-sleep 5
-DRIVER_EOF
-chmod +x "${DRIVER8}"
-export CCP_CLAUDE_CMD="${DRIVER8}"
+echo "── Section 8: stop hook idle (title_updater integration) ──"
 
 > "${TITLE_LOG}"
 rm -f "${STATUS_FILE}" "${CONTEXT_FILE}"
-# Pre-set active status (priority > 10) so idle suppression logic engages
 printf '🧪 Testing' > "${STATUS_FILE}"
-
-monitor_claude_output "myproject (main)" 2>/dev/null || true
+title_updater "myproject (main)"
+sleep 1.2
+printf '' > "${STATUS_FILE}"
+sleep 1.2
+cleanup_monitor
 
 idle_log=$(cat "${TITLE_LOG}")
 [[ "${VERBOSE}" == "true" ]] && echo "--- title log ---" && cat "${TITLE_LOG}" && echo "---"
-# After 3s+ of FIFO silence with empty status file, idle should appear
-assert_contains "idle appears after FIFO drain delay" "💤 Idle" "${idle_log}"
+assert_contains "idle appears after stop clears status" "💤 Idle" "${idle_log}"
 
-unset CCP_CLAUDE_CMD
-
-# ── Section 9: monitor integration — animation spinner chars prepended ──────────
-# Drive the real monitor for 7+ heartbeats with an active status.
-# Verify all 6 spinner characters appear prepended to the title in CCP_TITLE_LOG.
+# ── Section 9: title_updater integration — animation spinner chars prepended ───
+# Drive title_updater with an active status and verify spinner characters appear.
 # Format: "spinner_char body" logged as "base_title | spinner_char body"
 
 echo ""
-echo "── Section 9: animation spinner chars prepended (monitor integration) ──"
-
-DRIVER9="${TMP}/driver9.sh"
-cat > "${DRIVER9}" << 'DRIVER_EOF'
-#!/usr/bin/env bash
-# Keep FIFO alive for 8 seconds so 8 heartbeat cycles fire (6+ needed for full cycle)
-for i in $(seq 1 8); do
-    echo "tick ${i}"
-    sleep 1
-done
-DRIVER_EOF
-chmod +x "${DRIVER9}"
-export CCP_CLAUDE_CMD="${DRIVER9}"
+echo "── Section 9: animation spinner chars prepended (title_updater integration) ──"
 
 > "${TITLE_LOG}"
 rm -f "${STATUS_FILE}" "${CONTEXT_FILE}"
 printf '✏️ Editing' > "${STATUS_FILE}"
-
-monitor_claude_output "myproject (main)" 2>/dev/null || true
+title_updater "myproject (main)"
+sleep 8
+cleanup_monitor
 
 spin_log=$(cat "${TITLE_LOG}")
 [[ "${VERBOSE}" == "true" ]] && echo "--- title log ---" && cat "${TITLE_LOG}" && echo "---"
@@ -362,8 +333,6 @@ done
 # grep for any line containing a spinner char immediately followed by ✏️ Editing
 spinner_editing_line=$(grep -m1 '[·✢✳✶✻✽] ✏️ Editing' "${TITLE_LOG}" 2>/dev/null || echo "")
 assert_contains "spinner is prepended (before ✏️ Editing)" "✏️ Editing" "${spinner_editing_line}"
-
-unset CCP_CLAUDE_CMD
 
 # ── Results ────────────────────────────────────────────────────────────────────
 
