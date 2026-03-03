@@ -1,57 +1,65 @@
-# Claude Code Hook Integration (Optional)
+# Claude Code Hooks Integration
 
-By default, **C**laude **C**ode **P**ane-Pulse detects status by monitoring Claude Code's stdout through a PTY. This works well but has two limitations:
+`ccp` runs in a hooks-first architecture. When dynamic mode is enabled, it injects
+hook commands into the project-local `.claude/settings.local.json` and removes
+them on exit.
 
-- Updates arrive up to 1 second late (the heartbeat interval)
-- Events that produce no output — like permission prompts — aren't visible until the 2-minute silence timeout triggers `⏳ Waiting`
+You usually do not need to configure hooks manually.
 
-Adding Claude Code hooks gives `ccp` a direct signal channel for sub-second updates on the three key state transitions.
+## Injected Hook Events
 
-## Setup
+`ccp` injects handlers for:
 
-Add the following to `~/.claude/settings.json`:
+- `PreToolUse`
+- `PostToolUse`
+- `PostToolUseFailure`
+- `UserPromptSubmit`
+- `Stop`
+- `PermissionRequest`
+- `Notification`
+- `TaskCompleted`
+- `SessionStart`
+- `SessionEnd`
+- `PreCompact`
+- `SubagentStart`
+- `SubagentStop`
+- `TeammateIdle`
+- `ConfigChange`
+- `WorktreeCreate`
+- `WorktreeRemove`
 
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "type": "command",
-        "command": "ccp --hook-state running"
-      }
-    ],
-    "PermissionRequest": [
-      {
-        "type": "command",
-        "command": "ccp --hook-state needs-input"
-      }
-    ],
-    "Stop": [
-      {
-        "type": "command",
-        "command": "ccp --hook-state done"
-      }
-    ]
-  }
-}
-```
+All handlers call `lib/hook_runner.sh` asynchronously and always return success.
 
-If you already have hooks configured, merge the entries rather than replacing the whole object.
+## Status Profiles
 
-## What each hook does
+Use `--status-profile quiet|verbose` (or `CCP_STATUS_PROFILE`) to control what
+events are surfaced in titles.
 
-| Hook | State | Effect |
-|------|-------|--------|
-| `UserPromptSubmit` | `running` | Clears any stale `⏳ Waiting` or `💤 Idle` state immediately when you send a new message |
-| `PermissionRequest` | `needs-input` | Shows `⏳ Waiting` instantly when Claude needs to ask for a tool permission, without waiting 2 minutes |
-| `Stop` | `done` | Shows `💤 Idle` the moment Claude finishes responding |
+### Quiet (default)
 
-## How it works
+High-signal statuses only:
 
-`ccp --hook-state <state>` writes a small signal file to `~/.config/claude-pane-pulse/`. The running `ccp` monitor reads and deletes that file on its next heartbeat tick (within 1 second), then applies the state.
+- Existing tool/workflow statuses (`✏️ Editing`, `🧪 Testing`, `🔨 Building`, etc.)
+- `⏸️ Awaiting approval` (`PermissionRequest`)
+- `🙋 Input needed` (`Notification` when action/input is required)
+- `🏁 Completed` (`TaskCompleted` and selected `SessionEnd` reasons)
 
-The hook command runs as a child of Claude Code, which runs inside the PTY that `ccp` created. It shares the same `$TMUX_PANE` (in tmux) or TTY, which is how the signal file is routed to the correct running session.
+### Verbose
 
-## Without hooks
+Everything in quiet, plus lifecycle/internal events:
 
-Everything still works. The output-monitoring path handles all the same transitions — it just relies on regex pattern matching against stdout rather than explicit hook signals. The `⏳ Waiting` state appears after 2 minutes of silence from an active operation rather than immediately on a `PermissionRequest`.
+- `🚀 Session started`
+- `🧠 Compacting`
+- `🤖 Subagent started`
+- `✅ Subagent finished`
+- `👥 Teammate idle`
+- `⚙️ Config changed`
+- `🌿 Worktree created`
+- `🧹 Worktree removed`
+- Generic notification/event fallbacks (`🔔 ...`)
+
+## Notes
+
+- Existing user hooks are preserved.
+- `ccp` deduplicates its own hook entries on startup.
+- Hook entries are tagged with the `ccp` process PID and removed on teardown.

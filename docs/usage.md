@@ -95,10 +95,32 @@ Searches for a session whose title contains `"PR #89"` and resumes in that direc
 | `--refactor DESC` | Quick format: `Refactor: DESC` |
 | `--auto-title` | Detect title from git branch |
 | `--no-dynamic` | Static title only — disable monitoring |
+| `--status-profile MODE` | Status surface: `quiet` (default) or `verbose` |
 | `--continue TITLE` | Resume session by title search |
 | `--list`, `-l` | List all saved sessions |
 | `--help`, `-h` | Show help |
 | `--version`, `-v` | Show version |
+
+## Status Profile
+
+Use tiered status visibility depending on how much title detail you want:
+
+```bash
+# Default: high-signal statuses only
+ccp --status-profile quiet "PR #89"
+
+# Full lifecycle statuses (session/worktree/subagent/config)
+ccp --status-profile verbose "PR #89"
+```
+
+You can also set an environment default:
+
+```bash
+export CCP_STATUS_PROFILE=verbose
+ccp "PR #89"
+```
+
+Precedence: CLI flag `--status-profile` overrides `CCP_STATUS_PROFILE`; default is `quiet`.
 
 ## Multi-Pane Workflow
 

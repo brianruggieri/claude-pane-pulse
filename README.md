@@ -111,12 +111,27 @@ Pushing:     "PR #89 | ⬆️ Pushing..."
 Idle:        "PR #89 | 💤 Idle"
 ```
 
+Status surface profiles:
+
+- `quiet` (default): high-signal statuses only
+- `verbose`: full lifecycle surface (session/worktree/subagent/config events)
+
+```bash
+# Default (quiet)
+ccp "PR #89 - Fix auth bug"
+
+# Full lifecycle statuses
+ccp --status-profile verbose "PR #89 - Fix auth bug"
+```
+
 ### Status Icons
 
 | Icon | Status | Priority |
 |------|--------|----------|
 | 🐛 | Error | Highest |
 | ❌ | Tests failed | High |
+| ⏸️ | Awaiting approval | High |
+| 🙋 | Input needed | High |
 | 🔨 | Building | Active |
 | 🧪 | Testing | Active |
 | 📦 | Installing | Active |
@@ -125,8 +140,11 @@ Idle:        "PR #89 | 💤 Idle"
 | 🔀 | Merging | Active |
 | ✅ | Tests passed | Complete |
 | 💾 | Committed | Complete |
+| 🏁 | Completed | Complete |
 | 💭 | Thinking | Background |
 | 💤 | Idle | Lowest |
+
+Verbose-only examples: `🚀 Session started`, `🧠 Compacting`, `🤖 Subagent started`, `👥 Teammate idle`, `⚙️ Config changed`, `🌿 Worktree created`.
 
 ## 🎯 Multi-Pane Workflow
 
