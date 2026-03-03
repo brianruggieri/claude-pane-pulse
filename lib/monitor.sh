@@ -226,19 +226,9 @@ monitor_claude_output() {
         fi
 
         # Build the static title prefix: "project (branch) | "
-        # Computed once — these env vars are exported by bin/ccp at launch.
-        local title_prefix=""
-        local _proj="${CCP_PROJECT_NAME:-}"
-        local _branch="${CCP_BRANCH_NAME:-}"
-        if [[ -n "${_proj}" ]]; then
-            [[ "${#_proj}" -gt 15 ]] && _proj="${_proj:0:14}…"
-            if [[ -n "${_branch}" ]]; then
-                [[ "${#_branch}" -gt 12 ]] && _branch="${_branch:0:11}…"
-                title_prefix="${_proj} (${_branch}) | "
-            else
-                title_prefix="${_proj} | "
-            fi
-        fi
+        # format_title_prefix adapts to the pane width at session start.
+        local title_prefix
+        title_prefix=$(format_title_prefix "${CCP_PROJECT_NAME:-}" "${CCP_BRANCH_NAME:-}")
 
         local esc
         esc=$(printf '\033')

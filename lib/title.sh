@@ -88,5 +88,67 @@ update_title_with_context() {
     fi
 }
 
+# format_title_prefix: build "project (branch) | " with size-aware truncation.
+# Branch name gets slight priority (more chars) over project name.
+#
+# Usage: format_title_prefix project branch [pane_width]
+#   pane_width defaults to $COLUMNS, then tput cols, then 80.
+format_title_prefix() {
+    local proj="${1:-}"
+    local branch="${2:-}"
+    local width="${3:-}"
+
+    # Detect terminal width when not explicitly provided
+    if [[ -z "${width}" ]]; then
+        width="${COLUMNS:-0}"
+        if ! [[ "${width}" =~ ^[0-9]+$ ]] || [[ "${width}" -le 0 ]]; then
+            width=$(tput cols 2>/dev/null || echo "")
+        fi
+    fi
+
+    # Normalize: coerce non-numeric or non-positive values to the fallback
+    if ! [[ "${width}" =~ ^[0-9]+$ ]] || [[ "${width}" -le 0 ]]; then
+        width=80
+    fi
+
+    # Ensure a sensible minimum width
+    [[ "${width}" -lt 20 ]] && width=20
+
+    [[ -z "${proj}" ]] && echo "" && return
+
+    if [[ -z "${branch}" ]]; then
+        # No branch: reserve 30 chars for status/context, 3 for " | "
+        local budget=$(( width - 33 ))
+        [[ "${budget}" -lt 4 ]] && budget=4
+        [[ "${#proj}" -gt "${budget}" ]] && proj="${proj:0:$(( budget - 1 ))}…"
+        echo "${proj} | "
+        return
+    fi
+
+    # With branch: " () | " overhead = 6; reserve 30 for status/context
+    local budget=$(( width - 36 ))
+    [[ "${budget}" -lt 8 ]] && budget=8
+
+    # Branch gets 55% of budget (slight priority), project gets 45%
+    # The + 50 implements rounding (integer arithmetic: (n*55 + 50) / 100 ≈ round(n*0.55))
+    local branch_max=$(( (budget * 55 + 50) / 100 ))
+    local proj_max=$(( budget - branch_max ))
+    [[ "${branch_max}" -lt 4 ]] && branch_max=4
+    [[ "${proj_max}" -lt 4 ]] && proj_max=4
+
+    # Donate unused quota from a short name to the other
+    if [[ "${#proj}" -lt "${proj_max}" && "${#branch}" -gt "${branch_max}" ]]; then
+        branch_max=$(( branch_max + proj_max - ${#proj} ))
+    elif [[ "${#branch}" -lt "${branch_max}" && "${#proj}" -gt "${proj_max}" ]]; then
+        proj_max=$(( proj_max + branch_max - ${#branch} ))
+    fi
+
+    [[ "${#proj}" -gt "${proj_max}" ]] && proj="${proj:0:$(( proj_max - 1 ))}…"
+    [[ "${#branch}" -gt "${branch_max}" ]] && branch="${branch:0:$(( branch_max - 1 ))}…"
+
+    echo "${proj} (${branch}) | "
+}
+
 export -f set_title
 export -f update_title_with_context
+export -f format_title_prefix
