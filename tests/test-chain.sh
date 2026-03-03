@@ -93,11 +93,17 @@ echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}' \
     | bash "${LIB_DIR}/hook_runner.sh" pre-tool
 assert_eq "pre-tool git push → ⬆️ Pushing" "⬆️ Pushing" "$(cat "${STATUS_FILE}" 2>/dev/null || echo '')"
 
-# Test: user-prompt writes context
+# Test: user-prompt writes context (with trailing newline — baseline)
 rm -f "${CONTEXT_FILE}"
 echo '{"prompt":"Fix the login authentication bug"}' \
     | bash "${LIB_DIR}/hook_runner.sh" user-prompt
 assert_contains "user-prompt writes context" "Fix the login" "$(cat "${CONTEXT_FILE}" 2>/dev/null || echo '')"
+
+# Test: user-prompt WITHOUT trailing newline (Claude Code sends JSON without \n)
+rm -f "${CONTEXT_FILE}"
+printf '%s' '{"prompt":"Fix the login authentication bug"}' \
+    | bash "${LIB_DIR}/hook_runner.sh" user-prompt
+assert_contains "user-prompt (no trailing newline) writes context" "Fix the login" "$(cat "${CONTEXT_FILE}" 2>/dev/null || echo '')"
 
 # Test: user-prompt placeholder uses at most 5 words (no 60-char hard truncation)
 rm -f "${CONTEXT_FILE}"

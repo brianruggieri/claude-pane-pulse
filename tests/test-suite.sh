@@ -127,14 +127,21 @@ assert_equals   "Running has priority 55"      "55"   "$(run_priority "● Bash(
 echo ""
 echo "animate_status()"
 
-assert_equals "frame 0 = hollow circle" "🔨 Building ○" "$(animate_status "🔨 Building" 0)"
-assert_equals "frame 1 = half circle"  "🔨 Building ◑" "$(animate_status "🔨 Building" 1)"
-assert_equals "frame 2 = full circle"  "🔨 Building ●" "$(animate_status "🔨 Building" 2)"
-assert_equals "frame 3 = half circle"  "🔨 Building ◑" "$(animate_status "🔨 Building" 3)"
-assert_equals "frame 4 wraps to 0"     "🔨 Building ○" "$(animate_status "🔨 Building" 4)"
-assert_equals "error not animated"   "🐛 Error"       "$(animate_status "🐛 Error" 1)"
-assert_equals "passed not animated"  "✅ Tests passed" "$(animate_status "✅ Tests passed" 2)"
-assert_equals "idle not animated"    "💤 Idle"        "$(animate_status "💤 Idle" 1)"
+# Ping-pong sequence: · ✻ ✽ ✶ ✳ ✢  ✳ ✶ ✽ ✻  (then back to ·)
+assert_equals "frame 0  = · (grow start)"   "🔨 Building ·" "$(animate_status "🔨 Building" 0)"
+assert_equals "frame 1  = ✻"               "🔨 Building ✻" "$(animate_status "🔨 Building" 1)"
+assert_equals "frame 2  = ✽"               "🔨 Building ✽" "$(animate_status "🔨 Building" 2)"
+assert_equals "frame 3  = ✶"               "🔨 Building ✶" "$(animate_status "🔨 Building" 3)"
+assert_equals "frame 4  = ✳"               "🔨 Building ✳" "$(animate_status "🔨 Building" 4)"
+assert_equals "frame 5  = ✢ (peak)"        "🔨 Building ✢" "$(animate_status "🔨 Building" 5)"
+assert_equals "frame 6  = ✳ (shrink)"      "🔨 Building ✳" "$(animate_status "🔨 Building" 6)"
+assert_equals "frame 7  = ✶"               "🔨 Building ✶" "$(animate_status "🔨 Building" 7)"
+assert_equals "frame 8  = ✽"               "🔨 Building ✽" "$(animate_status "🔨 Building" 8)"
+assert_equals "frame 9  = ✻"               "🔨 Building ✻" "$(animate_status "🔨 Building" 9)"
+assert_equals "frame 10 wraps to ·"        "🔨 Building ·" "$(animate_status "🔨 Building" 10)"
+assert_equals "error not animated"         "🐛 Error"       "$(animate_status "🐛 Error" 1)"
+assert_equals "passed not animated"        "✅ Tests passed" "$(animate_status "✅ Tests passed" 2)"
+assert_equals "idle not animated"          "💤 Idle"        "$(animate_status "💤 Idle" 1)"
 
 # ── Tests: set_title ──────────────────────────────────────────────────────────
 
@@ -315,6 +322,13 @@ result=$(echo '{"prompt":"Fix the login bug in the auth module"}' \
 assert_contains "user-prompt writes context"        "Fix the login bug"  "${result}"
 result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_contains "user-prompt clears idle (writes 💭 Thinking)" "💭 Thinking" "${result}"
+
+# user-prompt: no trailing newline (exactly how Claude Code sends hook payloads)
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(printf '%s' '{"prompt":"Refactor the database layer"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_contains "user-prompt: no trailing newline" "Refactor the database" "${result}"
 
 # stop handler clears status file
 printf '🧪 Testing' > "${TMP_STATUS}"
