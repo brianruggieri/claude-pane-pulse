@@ -53,28 +53,6 @@ status_to_priority() {
     fi
 }
 
-# ── Status color map ──────────────────────────────────────────────────────────
-# Returns an ANSI color prefix for a given status emoji/label.
-# Used when printing status-change lines to the terminal.
-status_color() {
-    local status="$1"
-    if [[ "${status}" =~ "🐛 Error" ]]; then
-        printf '%s' "${RED}"
-    elif [[ "${status}" =~ "❌ Tests failed" ]]; then
-        printf '%s' "${RED}"
-    elif [[ "${status}" =~ "✅ Tests passed" ]]; then
-        printf '%s' "${GREEN}"
-    elif [[ "${status}" =~ "🔨 Building" || "${status}" =~ "🧪 Testing" || "${status}" =~ "📦 Installing" ]]; then
-        printf '%s' "${YELLOW}"
-    elif [[ "${status}" =~ "⬆️ Pushing" || "${status}" =~ "⬇️ Pulling" || "${status}" =~ "🔀 Merging" ]]; then
-        printf '%s' "${BLUE}"
-    elif [[ "${status}" =~ "💾 Committed" ]]; then
-        printf '%s' "${GREEN}"
-    else
-        printf '%s' "${NC}"
-    fi
-}
-
 # ── extract_context ───────────────────────────────────────────────────────────
 # Parse a stripped line of output and return "status|priority".
 # Empty status means no match — caller keeps the previous context.
@@ -147,15 +125,6 @@ extract_context() {
         context="🐳 Docker"
         priority=70
 
-    # ── Claude thinking (structural, phrase-independent) ─────────────────────
-    # Claude Code's spinner uses two characters across versions:
-    #   ● (bullet, older)   ✸ (sparkle/star, v2.1+)
-    # The trailing marker is either "..." (three dots) or "…" (U+2026 ellipsis).
-    # Match both so we're version-agnostic.
-    elif [[ "${line}" =~ (●|✸).*(\.\.\.|…) ]]; then
-        context="✸ Thinking"
-        priority=70
-
     # ── File editing ──────────────────────────────────────────────────────────
     elif [[ "${line}" =~ ●[[:space:]]*(Edit|Write|MultiEdit|NotebookEdit)\( ]]; then
         context="✏️ Editing"
@@ -223,11 +192,11 @@ monitor_claude_output() {
 
         local current_priority=0
         local current_context=""
-        local last_update
-        last_update=$(date +%s)
+        local last_update=$SECONDS
         local frame_counter=0
         local task_summary=""
         local last_hook_update=0
+        local last_fifo_activity=$SECONDS
         # Hook data files (set by bin/ccp via environment exports)
         local status_file="${CCP_STATUS_FILE:-}"
         local context_file="${CCP_CONTEXT_FILE:-}"
@@ -259,39 +228,47 @@ monitor_claude_output() {
             IFS= read -r -t 1 line || read_status=$?
 
             if [[ ${read_status} -eq 0 ]]; then
-                # ── Got a line — strip ANSI escape sequences ──────────────
-                line=$(printf '%s' "${line}" \
-                    | sed "s/${esc}\[[0-9;]*[a-zA-Z]//g" \
-                    | tr -d '\r')
+                # ── Got a line ────────────────────────────────────────────
+                # Strip carriage returns; ANSI colour codes are removed only
+                # when we actually need the text content (see below).
+                line="${line%$'\r'}"
 
                 if [[ -n "${line}" ]]; then
-                    # ── PTY status detection (fallback when no recent hook) ─
-                    # Hooks fire ~instantly; skip PTY parsing for 2s after one.
-                    local current_time
-                    current_time=$(date +%s)
-                    if [[ $((current_time - last_hook_update)) -gt 2 ]]; then
-                        local result new_context new_priority
-                        result=$(extract_context "${line}")
+                    # Any FIFO output means Claude is alive.  Update the
+                    # activity timestamp so idle is suppressed as long as
+                    # bytes are flowing — regardless of whether hooks are
+                    # working or whether we recognise the content.
+                    last_fifo_activity=$SECONDS
+
+                    # If currently showing idle, lift to Thinking immediately.
+                    # Hooks will supply the real named status on the next
+                    # heartbeat tick when they are working correctly.
+                    if [[ "${current_priority}" -le 10 ]]; then
+                        current_context="💭 Thinking"
+                        current_priority=70
+                        last_update=$SECONDS
+                    fi
+
+                    # Completion events (test pass/fail, git commits) are the
+                    # only status we detect from PTY text — hooks don't cover
+                    # these.  The sed+tr ANSI strip is expensive (~5 ms, a
+                    # subprocess fork) so we gate it behind a cheap bash-native
+                    # pre-filter: only lines that could plausibly be completion
+                    # output (contain "pass", "fail", or "commit") pay the
+                    # stripping cost.  Typically < 1 % of FIFO lines qualify.
+                    if [[ "${line}" == *pass* || "${line}" == *fail* || \
+                          "${line}" == *commit* ]]; then
+                        local stripped
+                        stripped=$(printf '%s' "${line}" \
+                            | sed "s/${esc}\[[?0-9;]*[a-zA-Z]//g")
+                        local result new_context
+                        result=$(extract_context "${stripped}")
                         new_context="${result%|*}"
-                        new_priority="${result#*|}"
-
-                        # Completion events always show even if numerically lower
-                        local is_completion=0
-                        if [[ "${new_context}" =~ (Tests\ passed|Tests\ failed|Committed) ]]; then
-                            is_completion=1
-                        fi
-
-                        if [[ -n "${new_context}" ]] && \
-                           { [[ "${is_completion}" -eq 1 ]] || \
-                             [[ "${new_priority}" -ge "${current_priority}" ]] || \
-                             [[ $((current_time - last_update)) -gt 60 ]]; }; then
-                            current_priority="${new_priority}"
+                        if [[ "${new_context}" =~ \
+                              (Tests\ passed|Tests\ failed|Committed) ]]; then
                             current_context="${new_context}"
-                            last_update="${current_time}"
-
-                            if [[ "${is_completion}" -eq 1 ]]; then
-                                current_priority=0
-                            fi
+                            current_priority=0   # let the next event win
+                            last_update=$SECONDS
                         fi
                     fi
                 fi
@@ -302,32 +279,38 @@ monitor_claude_output() {
                 # bash 3.2 (macOS): read -t timeout returns 1 (same as EOF;
                 # indistinguishable).  We treat both as "heartbeat" and rely
                 # on cleanup_monitor() to kill us when Claude Code exits.
-                local current_time
-                current_time=$(date +%s)
-
-                # Reset to idle after 60s of no significant activity
-                if [[ $((current_time - last_update)) -gt 60 ]] && \
-                   [[ "${current_priority}" -gt 10 ]]; then
-                    current_priority=10
-                    current_context="💤 Idle"
-                    last_update="${current_time}"
-                fi
+                local current_time=$SECONDS
 
                 # ── Read hook status file ──────────────────────────────────
+                local hook_status=""
                 if [[ -n "${status_file}" && -f "${status_file}" ]]; then
-                    local hook_status
                     hook_status=$(cat "${status_file}" 2>/dev/null || true)
-                    if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
-                        current_context="${hook_status}"
-                        current_priority=$(status_to_priority "${hook_status}")
-                        last_update="${current_time}"
-                        last_hook_update="${current_time}"
-                    elif [[ -z "${hook_status}" && "${current_priority}" -gt 10 ]]; then
-                        # Empty status file means Stop hook fired — go idle
+                fi
+
+                if [[ -n "${hook_status}" && "${hook_status}" != "${current_context}" ]]; then
+                    current_context="${hook_status}"
+                    current_priority=$(status_to_priority "${hook_status}")
+                    last_update="${current_time}"
+                    last_hook_update="${current_time}"
+                elif [[ -z "${hook_status}" && "${current_priority}" -gt 10 ]]; then
+                    # Stop hook fired (empty status file).  Wait for the FIFO
+                    # to drain before committing to idle — the last output
+                    # bytes can lag the hook by 1-3 s.
+                    if [[ $((current_time - last_fifo_activity)) -gt 3 ]]; then
                         current_priority=10
                         current_context="💤 Idle"
                         last_update="${current_time}"
                     fi
+                fi
+
+                # Fallback idle: FIFO has been completely silent for 60 s.
+                # This fires when hooks are broken and Claude has genuinely
+                # stopped — FIFO silence is version-stable unlike text parsing.
+                if [[ $((current_time - last_fifo_activity)) -gt 60 ]] && \
+                   [[ "${current_priority}" -gt 10 ]]; then
+                    current_priority=10
+                    current_context="💤 Idle"
+                    last_update="${current_time}"
                 fi
 
                 # ── Read context file (user prompt as task summary) ────────
@@ -416,6 +399,5 @@ cleanup_monitor() {
 export -f status_to_priority
 export -f extract_context
 export -f animate_status
-export -f status_color
 export -f monitor_claude_output
 export -f cleanup_monitor

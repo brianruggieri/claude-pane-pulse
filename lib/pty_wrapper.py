@@ -82,6 +82,13 @@ def main():
     # Open the FIFO for writing.  Blocks until the monitor's read end is open,
     # synchronising startup with the bash background process.
     pipe_fd = os.open(pipe_path, os.O_WRONLY)
+    # Make FIFO writes non-blocking: if the monitor subshell is slow and the
+    # pipe buffer fills, os.write raises EAGAIN/EWOULDBLOCK rather than
+    # stalling.  A stall here delays the stdout write for the *next* chunk,
+    # which breaks multi-chunk ANSI escape sequences and causes iTerm2 to
+    # render the remainder (e.g. "[38;2;255;255;255m") as literal text.
+    flags = fcntl.fcntl(pipe_fd, fcntl.F_GETFL)
+    fcntl.fcntl(pipe_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
     # Capture terminal dimensions before forking so the child starts at the
     # right size rather than the PTY default (typically 24×80).

@@ -61,17 +61,17 @@ setup_ccp_hooks() {
         '$existing |
          .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [
              {"_ccp_pid": $pid, "matcher": ".*", "hooks": [
-                 {"type": "command", "command": ("bash \"" + $runner + "\" pre-tool"), "timeout": 1000, "async": true}
+                 {"type": "command", "command": ("bash \"" + $runner + "\" pre-tool"), "timeout": 5000, "async": true}
              ]}
          ]) |
          .hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + [
              {"_ccp_pid": $pid, "hooks": [
-                 {"type": "command", "command": ("bash \"" + $runner + "\" user-prompt"), "timeout": 1000, "async": true}
+                 {"type": "command", "command": ("bash \"" + $runner + "\" user-prompt"), "timeout": 5000, "async": true}
              ]}
          ]) |
          .hooks.Stop = ((.hooks.Stop // []) + [
              {"_ccp_pid": $pid, "hooks": [
-                 {"type": "command", "command": ("bash \"" + $runner + "\" stop"), "timeout": 1000, "async": true}
+                 {"type": "command", "command": ("bash \"" + $runner + "\" stop"), "timeout": 5000, "async": true}
              ]}
          ])
         ') || return 0

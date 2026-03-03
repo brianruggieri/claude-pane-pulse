@@ -114,21 +114,11 @@ assert_contains "● Edit → Editing"             "✏️ Editing"   "$(run_ext
 assert_contains "● Write → Editing"            "✏️ Editing"   "$(run_extract "● Write(README.md)")"
 assert_contains "● Bash generic → Running"     "🖥️ Running"   "$(run_extract "● Bash(ls -la)")"
 
-# Structural thinking: phrase-independent — any ● or ✸ line with ... or …
-assert_contains "Dilly-dallying → Thinking"   "✸ Thinking" "$(run_extract "● Dilly-dallying... (57s · thinking)")"
-assert_contains "Thinking... → Thinking"      "✸ Thinking" "$(run_extract "● Thinking...")"
-assert_contains "Pondering... → Thinking"     "✸ Thinking" "$(run_extract "● Pondering...")"
-assert_contains "Arbitrary phrase → Thinking" "✸ Thinking" "$(run_extract "● Working through this...")"
-assert_contains "✸ Unravelling… → Thinking"  "✸ Thinking" "$(run_extract "✸ Unravelling… (thinking)")"
-assert_contains "✸ sparkle ellipsis → Think"  "✸ Thinking" "$(run_extract "✸ Analyzing…")"
-
 # Priority ordering
 assert_equals   "Error has priority 100"       "100"  "$(run_priority "Error: crash")"
 assert_equals   "Tests failed has priority 90" "90"   "$(run_priority "3 tests failed")"
 assert_equals   "Building has priority 80"     "80"   "$(run_priority "Building project")"
 assert_equals   "Pushing has priority 75"      "75"   "$(run_priority "git push origin")"
-assert_equals   "● Thinking has priority 70"    "70"   "$(run_priority "● Pondering...")"
-assert_equals   "✸ Thinking has priority 70"   "70"   "$(run_priority "✸ Unravelling… (thinking)")"
 assert_equals   "Editing has priority 65"      "65"   "$(run_priority "● Edit(foo.sh)")"
 assert_equals   "Running has priority 55"      "55"   "$(run_priority "● Bash(ls)")"
 

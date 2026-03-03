@@ -32,9 +32,15 @@ if [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" ]]; then
     exit 0
 fi
 
-# Read JSON from stdin
+# Read JSON from stdin with a per-line timeout so async hooks that receive
+# JSON but whose stdin is never closed (a Claude Code async-hook quirk) still
+# exit cleanly rather than being killed by the hook timeout.  When stdin IS
+# closed (normal piped input, tests), the loop exits immediately on EOF.
 json_input=""
-json_input=$(cat 2>/dev/null) || true
+while IFS= read -r -t 1 line 2>/dev/null; do
+    [[ -n "${json_input}" ]] && json_input="${json_input}"$'\n'
+    json_input="${json_input}${line}"
+done 2>/dev/null || true
 [[ -z "${json_input}" ]] && json_input="{}"
 
 _dbg "json=$(printf '%s' "${json_input}" | head -c 120 | tr '\n' ' ')"
