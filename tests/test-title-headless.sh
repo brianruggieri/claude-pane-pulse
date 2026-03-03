@@ -278,6 +278,61 @@ printf '' > "${STATUS_FILE}"
 stop_log=$(cat "${TITLE_LOG}")
 assert_contains "stop hook triggers idle in title" "💤 Idle" "${stop_log}"
 
+# ── Section 5: format_title_prefix — size-aware truncation ─────────────────────
+
+echo ""
+echo "format_title_prefix — size-aware truncation"
+
+# Short names fit at 80 cols without truncation
+pfx=$(format_title_prefix "myproject" "main" 80)
+assert_equals "short names: no truncation at 80 cols" "myproject (main) | " "${pfx}"
+
+# No branch: project-only prefix
+pfx=$(format_title_prefix "myproject" "" 80)
+assert_equals "no branch: project-only prefix" "myproject | " "${pfx}"
+
+# No project: empty prefix
+pfx=$(format_title_prefix "" "main" 80)
+assert_equals "no project: empty prefix" "" "${pfx}"
+
+# Wide pane (120 cols): long names fit without truncation
+# budget=84, branch_max=46, proj_max=38
+# "very-long-project-name" (22) < 38 and "feature/my-long-feature-branch" (30) < 46
+pfx=$(format_title_prefix "very-long-project-name" "feature/my-long-feature-branch" 120)
+assert_contains "wide pane (120): full project shown"   "very-long-project-name"        "${pfx}"
+assert_contains "wide pane (120): full branch shown"    "feature/my-long-feature-branch" "${pfx}"
+
+# Narrow pane (60 cols): both truncated; branch retains more original chars
+# budget=24, branch_max=13 (55%), proj_max=11 (45%)
+# Truncation uses max-1 chars + ellipsis, so:
+# "some-long-project" (17 > 11) → first 10 chars kept + "…": "some-long-"
+# "some-long-branch-name" (21 > 13) → first 12 chars kept + "…": "some-long-br"
+pfx=$(format_title_prefix "some-long-project" "some-long-branch-name" 60)
+assert_contains     "narrow pane (60): project prefix preserved"    "some-long-"         "${pfx}"
+assert_contains     "narrow pane (60): branch retains more chars"   "some-long-br"       "${pfx}"
+assert_not_contains "narrow pane (60): full project name absent"    "some-long-project"  "${pfx}"
+assert_not_contains "narrow pane (60): full branch name absent"     "some-long-branch-name" "${pfx}"
+
+# Space donation: project short → branch gets extra space
+# budget=44, branch_max=24, proj_max=20
+# "go" (2) < 20 → donate 18 to branch_max (→42); "a-very-long-branch-name-indeed" (30) < 42 → no trim
+pfx=$(format_title_prefix "go" "a-very-long-branch-name-indeed" 80)
+assert_contains "donation to branch: long branch fully shown"  "a-very-long-branch-name-indeed" "${pfx}"
+assert_contains "donation to branch: short project intact"     "go ("                           "${pfx}"
+
+# Space donation: branch short → project gets extra space
+# budget=44, branch_max=24, proj_max=20
+# "go" (2) < 24 → donate 22 to proj_max (→42); "a-very-long-project-name-indeed" (31) < 42 → no trim
+pfx=$(format_title_prefix "a-very-long-project-name-indeed" "go" 80)
+assert_contains "donation to project: long project fully shown" "a-very-long-project-name-indeed" "${pfx}"
+assert_contains "donation to project: short branch intact"      " (go) | "                       "${pfx}"
+
+# Tiny pane (20 cols, minimum): no-branch path truncates project
+# width clamped to 20, budget=max(4, 20-33)=4; "myproj" (6) > 4 → trim to 3+…
+pfx=$(format_title_prefix "myproj" "" 20)
+assert_contains     "tiny pane: project trimmed with ellipsis" "…"      "${pfx}"
+assert_not_contains "tiny pane: full name absent"              "myproj " "${pfx}"
+
 # ── Cleanup ────────────────────────────────────────────────────────────────────
 
 rm -rf "${STATE_DIR}"
