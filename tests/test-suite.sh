@@ -58,6 +58,17 @@ assert_equals() {
     fi
 }
 
+assert_not_equals() {
+    local name="$1"
+    local unexpected="$2"
+    local actual="$3"
+    if [[ "${unexpected}" != "${actual}" ]]; then
+        pass "${name}"
+    else
+        fail "${name}" "expected something other than: '${unexpected}'"
+    fi
+}
+
 assert_contains() {
     local name="$1"
     local needle="$2"
@@ -330,7 +341,7 @@ result=$(echo '{"prompt":"Fix the login bug in the auth module"}' \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_contains "user-prompt writes context"        "Fix the login bug"  "${result}"
 result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_contains "user-prompt clears idle (writes 💭 Thinking)" "💭 Thinking" "${result}"
+assert_equals "user-prompt clears idle (writes 💭 Thinking)" "💭 Thinking" "${result}"
 
 # user-prompt: no trailing newline (exactly how Claude Code sends hook payloads)
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"

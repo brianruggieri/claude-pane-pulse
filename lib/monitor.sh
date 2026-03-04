@@ -116,6 +116,22 @@ title_updater() {
         local status_file="${CCP_STATUS_FILE:-}"
         local context_file="${CCP_CONTEXT_FILE:-}"
 
+        # Idle phrase cycling — advances to next phrase each time Claude goes idle
+        local _idle_idx=0
+        local _prev_active=false
+        local _idle_phrases=(
+            "💤 Idle"
+            "☕ Recharging"
+            "🧘 Centering"
+            "🎯 Ready"
+            "🫡 Standing by"
+            "💡 Listening"
+            "🌿 At rest"
+            "👀 Watching"
+            "🌊 Drifting"
+            "✨ Floating"
+        )
+
         local tick_interval="1"
         if [[ "${BASH_VERSINFO[0]:-3}" -ge 4 && -z "${TMUX:-}" ]]; then
             tick_interval="0.15"
@@ -145,8 +161,14 @@ title_updater() {
                     if [[ "${hook_status}" != "${current_context}" ]]; then
                         current_context="${hook_status}"
                     fi
+                    _prev_active=true
                 else
-                    current_context="💤 Idle"
+                    # Advance to next idle phrase on each transition from active → idle
+                    if [[ "${_prev_active}" = true ]]; then
+                        _idle_idx=$(( (_idle_idx + 1) % ${#_idle_phrases[@]} ))
+                        _prev_active=false
+                    fi
+                    current_context="${_idle_phrases[${_idle_idx}]}"
                 fi
 
                 local new_summary=""
