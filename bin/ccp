@@ -62,6 +62,8 @@ ${BLUE}ccp Options:${NC}
     --status-profile MODE   Status surface: quiet (default) or verbose
     --ai-context            Summarize prompts in title via claude-haiku (opt-in,
                             uses your Claude subscription — see docs/ai-context.md)
+                            Privacy: prompt text is sent to Anthropic to generate
+                            the summary. Do not enable if prompts contain secrets.
                             Also: export CCP_ENABLE_AI_CONTEXT=true for always-on
     --goto TITLE            Re-open a previous session by title search
     --list, -l              List all active sessions
