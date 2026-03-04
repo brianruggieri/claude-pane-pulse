@@ -18,7 +18,7 @@
 #   thinking  infra-tools   chore/terraform-up   💭  mid-response stream
 #
 # --title-mode before   pane title = "PROJECTNAME — claude" (no status)
-# --title-mode after    pane title = "✳ PROJECT (BRANCH) | TASK | STATUS"
+# --title-mode after    pane title = "PROJECT (BRANCH) | TASK | STATUS"
 #                       (default)
 #
 # Holds the terminal open after rendering (sleep loop) until SIGTERM or Ctrl-C.
@@ -295,9 +295,15 @@ trap 'tput cnorm 2>/dev/null || true' EXIT INT TERM
 # Suppress zsh/oh-my-zsh auto-title so it doesn't overwrite our OSC title
 export DISABLE_AUTO_TITLE=true
 
-# Refresh the title every 2s using bash's built-in read timeout — no external
-# process is spawned, so the shell has nothing to use for auto-title.
+# Refresh the title every ~2s. When stdin is a TTY, bash's built-in read
+# timeout blocks without spawning any process (keeps auto-title hooks quiet).
+# When stdin is not a TTY (e.g. piped by the screenshot harness), fall back
+# to sleep so the loop actually runs ~every 2s instead of spinning.
 while true; do
     set_title "${_pane_title}"
-    read -r -t 2 < /dev/null 2>/dev/null || true
+    if [[ -t 0 ]]; then
+        read -r -t 2 2>/dev/null || true
+    else
+        sleep 2
+    fi
 done

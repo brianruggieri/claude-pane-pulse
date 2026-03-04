@@ -112,7 +112,7 @@ end tell
 APPLESCRIPT
 }
 
-# Get the pixel bounds {x, y, w, h} of the window as space-separated values.
+# Get the pixel bounds {left, top, right, bottom} of the window as space-separated values.
 iterm_window_bounds() {
     local win_id="$1"
     osascript << APPLESCRIPT 2>/dev/null
