@@ -1,5 +1,15 @@
 # Usage Guide
 
+## How ccp Works
+
+ccp wraps the Claude Code CLI to provide dynamic terminal pane titles. It injects hooks into `.claude/settings.local.json` that report what Claude is doing—editing, testing, thinking, etc. A background monitor converts these signals into live title updates.
+
+**Title format:** `project (branch) | task summary | status`
+
+**Example:** `my-project (main) | Fix Auth Bug | 🧪 Testing`
+
+On startup, you see `👋 Welcome back, Brian` (from your git config). After you send your first message, the title shows the AI's task summary and updates in real time as Claude works.
+
 ## Basic Usage
 
 ### Start with a title
@@ -8,7 +18,7 @@
 ccp "PR #89 - Fix authentication bug"
 ```
 
-This sets your terminal title to `PR #89 - Fix authentication bug`, then launches Claude Code with dynamic title monitoring enabled.
+Sets your terminal title and launches Claude Code with dynamic monitoring enabled.
 
 ### Auto-detect from git branch
 
@@ -16,7 +26,9 @@ This sets your terminal title to `PR #89 - Fix authentication bug`, then launche
 ccp --auto-title
 ```
 
-Reads the current git branch and constructs a title automatically:
+Or just `ccp` with no arguments—auto-detection is the default.
+
+Reads the current git branch and constructs a title:
 
 | Branch | Title |
 |--------|-------|
@@ -26,16 +38,7 @@ Reads the current git branch and constructs a title automatically:
 | `fix/12-crash` | `Issue #12 - crash` |
 | `main` | `Branch: main` |
 
-If no git repo is found: `Dev: <directory-name>`
-
-### Let ccp prompt you
-
-Run `ccp` with no arguments — it auto-detects a title and lets you accept or override it:
-
-```
-Auto-detected: Branch: main
-Press Enter to use this, or type custom title: PR #89 - Fix auth
-```
+If no git repo is found, title is the directory name.
 
 ## Quick Format Helpers
 
@@ -74,32 +77,65 @@ ccp --list
 
 Sessions are stored in `~/.config/claude-pane-pulse/sessions.json` and cleaned up automatically when ccp exits.
 
-### Resume a session
+### Re-open a previous session
 
 ```bash
-ccp --continue "PR #89"
+ccp --goto "auth"
 ```
 
-Searches for a session whose title contains `"PR #89"` and resumes in that directory.
+Searches saved sessions by title and `cd`'s into that project directory before launching Claude. This restores your **working directory**, not your conversation history.
+
+To resume a Claude **conversation** (e.g., picking up where you left off in chat), use Claude's own flags:
+
+```bash
+ccp -c                              # resume last conversation
+ccp --resume abc-123                # resume by session ID
+```
+
+These are forwarded directly to Claude Code and work just like running `claude -c` or `claude --resume` manually.
+
+## Claude Flag Passthrough
+
+ccp forwards unrecognized flags directly to Claude Code. Any Claude flag works:
+
+```bash
+ccp --model sonnet "Fix auth"                    # specify model
+ccp --permission-mode acceptEdits "Refactor"    # permission mode
+ccp --effort high "Big refactor"                 # effort level
+ccp --worktree "Add feature"                     # create a git worktree
+ccp "My task" -- --from-pr 89                   # use -- for ambiguous flags
+```
+
+ccp explicitly handles: `--model`, `--permission-mode`, `--effort`, `-c`/`--continue`, `-r`/`--resume`, `--debug`, `--verbose`, `--worktree`, `--from-pr`, `--add-dir`, `--allowedTools`, `--disallowedTools`, `--mcp-config`, `--ide`, `--dangerously-skip-permissions`, and a few others.
+
+Any unrecognized `-*` flag is also forwarded, so you can pass new Claude flags without waiting for a ccp update.
 
 ## Options Reference
 
 | Option | Description |
 |--------|-------------|
-| `TITLE` | Set the pane title manually |
-| `DIRECTORY` | Working directory for Claude Code |
+| `TITLE` | Set the pane title (positional) |
+| `DIRECTORY` | Working directory for Claude Code (positional) |
 | `--pr N DESC` | Quick format: `PR #N - DESC` |
 | `--issue N DESC` | Quick format: `Issue #N - DESC` |
 | `--feature DESC` | Quick format: `Feature: DESC` |
 | `--bug DESC` | Quick format: `Bug: DESC` |
 | `--refactor DESC` | Quick format: `Refactor: DESC` |
-| `--auto-title` | Detect title from git branch |
+| `--auto-title` | Detect title from git branch (default behavior) |
 | `--no-dynamic` | Static title only — disable monitoring |
-| `--status-profile MODE` | Status surface: `quiet` (default) or `verbose` |
-| `--continue TITLE` | Resume session by title search |
-| `--list`, `-l` | List all saved sessions |
+| `--status-profile quiet\|verbose` | Status surface (default: quiet) |
+| `--ai-context` | Summarize prompts via claude-haiku (opt-in, uses your subscription) |
+| `--goto TITLE` | Re-open previous session by title search |
+| `--list`, `-l` | List all active ccp sessions |
 | `--help`, `-h` | Show help |
 | `--version`, `-v` | Show version |
+| `-c`, `--continue` | (forwarded to Claude) Resume last conversation |
+| `-r`, `--resume [ID]` | (forwarded to Claude) Resume by session ID |
+| `--model MODEL` | (forwarded to Claude) Model to use |
+| `--permission-mode MODE` | (forwarded to Claude) Permission mode |
+| `--effort LEVEL` | (forwarded to Claude) Effort level |
+| `--` | Everything after is passed directly to Claude |
+| any `-*` flag | Unknown flags forwarded to Claude |
 
 ## Status Profile
 
@@ -124,15 +160,17 @@ Precedence: CLI flag `--status-profile` overrides `CCP_STATUS_PROFILE`; default 
 
 ## Multi-Pane Workflow
 
-The primary use case — running multiple Claude Code sessions in parallel:
+The primary use case—running multiple Claude Code sessions in parallel:
+
+<!-- screenshot: iTerm2 split pane with four Claude sessions, each showing different titles and status indicators -->
 
 ```
 ┌─────────────────────────┬─────────────────────────┐
-│  PR #89 - Fix auth      │  Issue #12 - API tests  │
-│  🧪 Testing...          │  ✅ Tests passed         │
+│  ✳ PR #89 - Fix auth    │  ✳ Issue #12 - API      │
+│  🧪 Testing             │  ✅ Tests passed        │
 ├─────────────────────────┼─────────────────────────┤
-│  Feature: OAuth         │  Bug: Login crash        │
-│  💭 Thinking            │  🐛 Error                │
+│  ✳ Feature: OAuth       │  ✳ Bug: Login crash     │
+│  💭 Thinking            │  🐛 Error               │
 └─────────────────────────┴─────────────────────────┘
 ```
 
@@ -152,9 +190,16 @@ ccp --feature "OAuth"
 ccp --bug "Login crash"
 ```
 
+Each pane now shows:
+- Your pane title (project name, branch, task summary, current status)
+- Live updates as Claude edits, tests, builds, or thinks
+- Clear visual distinction between active work and idle waiting
+
+<!-- screenshot: same panes after 30 seconds, showing status transitions (Testing → Tests passed, Building → Running) -->
+
 ## Tips
 
-- Use `--no-dynamic` when you want a clean, unmoving title (e.g., for screenshots)
-- Session titles are searchable — keep them descriptive
-- Branch names with numbers trigger PR/issue formatting automatically
+- Use `--no-dynamic` for a clean, unmoving title (e.g., for screenshots or when you want a quiet terminal)
+- Session titles are searchable—keep them descriptive
+- Keep branch names in your title for quick context (auto-title does this automatically)
 - If a title has spaces, quote it: `ccp "My feature work"`
