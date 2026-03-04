@@ -28,7 +28,14 @@ You usually do not need to configure hooks manually.
 - `WorktreeCreate`
 - `WorktreeRemove`
 
-All handlers call `lib/hook_runner.sh` asynchronously and always return success.
+All handlers call `lib/hook_runner.sh` asynchronously with a 5000ms timeout and always return success.
+
+## Welcome Status
+
+On startup, `ccp` writes `👋 Welcome back, <FirstName>` to the status file, derived from
+`git config user.name` with fallback to `$USER`. This welcome message is displayed in the
+terminal title until the first `UserPromptSubmit` hook fires, at which point it is overwritten
+by the active status.
 
 ## Status Profiles
 
@@ -63,3 +70,7 @@ Everything in quiet, plus lifecycle/internal events:
 - Existing user hooks are preserved.
 - `ccp` deduplicates its own hook entries on startup.
 - Hook entries are tagged with the `ccp` process PID and removed on teardown.
+- `hook_runner.sh` extends `PATH` to `/opt/homebrew/bin:/usr/local/bin:...` at startup,
+  ensuring `jq` and other tools are found. (Claude Code runs hooks with minimal `PATH`.)
+- `hook_runner.sh` reads hook JSON from stdin using a `read -r -t 1` loop to handle
+  Claude Code's behavior of omitting the trailing newline on hook payloads.

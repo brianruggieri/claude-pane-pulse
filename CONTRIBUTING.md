@@ -38,19 +38,21 @@ bash bin/ccp --help
 ```
 claude-pane-pulse/
 ├── bin/
-│   └── ccp              # Main executable
+│   └── ccp                  # Main executable
 ├── lib/
-│   ├── core.sh          # Shared constants, logging, dependency checks
-│   ├── status.sh        # Shared status helpers + spinner frames
-│   ├── title.sh         # Terminal title management
-│   ├── session.sh       # Session persistence (jq-backed)
-│   └── monitor.sh       # Dynamic monitoring, status detection, animation
-├── docs/                # Documentation
+│   ├── core.sh              # Shared constants, logging, dependency checks
+│   ├── title.sh             # Terminal title management
+│   ├── session.sh           # Session persistence (jq-backed)
+│   ├── monitor.sh           # Dynamic monitoring, animation, idle detection
+│   ├── hooks.sh             # Hook setup/teardown lifecycle
+│   ├── hook_runner.sh       # Hook event dispatch and status mapping
+│   └── pty_wrapper.py       # Python PTY wrapper with SIGWINCH propagation
+├── docs/                    # Documentation
 ├── tests/
-│   └── test-suite.sh    # Test suite (bash)
-├── .github/             # CI, issue templates, PR template
-├── install.sh           # Installer
-├── uninstall.sh         # Uninstaller
+│   └── test-suite.sh        # Test suite (bash)
+├── .github/                 # CI, issue templates, PR template
+├── install.sh               # Installer
+├── uninstall.sh             # Uninstaller
 ├── CHANGELOG.md
 ├── LICENSE
 └── README.md
@@ -67,6 +69,8 @@ This project follows the [Google Shell Style Guide](https://google.github.io/sty
 - **Compatibility:** Target bash 3.2+ (no `declare -A`, no `${var,,}`)
 - **Shebang:** `#!/usr/bin/env bash`
 - **Error handling:** `set -euo pipefail` in executable scripts
+- **Exception:** `hook_runner.sh` uses `set -uo pipefail` (intentionally, no `-e`)
+  because it must never exit early and block Claude Code's event dispatch
 
 ### ShellCheck
 
@@ -90,10 +94,14 @@ bash tests/test-suite.sh
 ```
 
 Tests cover:
-- `extract_context` pattern matching in `lib/monitor.sh`
-- `auto_detect_title` branch name parsing in `bin/ccp`
-- `set_title` output in `lib/title.sh`
-- Session save/load/cleanup in `lib/session.sh`
+- `hook_runner.sh` event dispatch and status mapping
+- `animate_status` spinner sequence in `lib/monitor.sh`
+- `set_title` escape sequence output in `lib/title.sh`
+- Session save/find/cleanup lifecycle in `lib/session.sh`
+- `setup_ccp_hooks` / `teardown_ccp_hooks` lifecycle in `lib/hooks.sh`
+
+Set `CCP_DISABLE_PROMPT_DISTILL=1` when running tests to skip the claude-haiku
+context summarization subprocess.
 
 Add tests for any new features or bug fixes.
 
