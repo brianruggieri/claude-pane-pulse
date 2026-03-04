@@ -34,8 +34,8 @@ All handlers call `lib/hook_runner.sh` asynchronously with a 5000ms timeout and 
 
 On startup, `ccp` writes `👋 Welcome back, <FirstName>` to the status file, derived from
 `git config user.name` with fallback to `$USER`. This welcome message is displayed in the
-terminal title until the first `UserPromptSubmit` hook fires, at which point it is overwritten
-by the active status.
+terminal title until it is replaced by a later status-writing hook event (for example,
+a `PreToolUse` status update).
 
 ## Status Profiles
 

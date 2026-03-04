@@ -106,7 +106,7 @@ Fired when a tool fails:
 
 ### UserPromptSubmit — User sends a message
 
-1. Immediately sets status to `💭 Thinking`
+1. Clears the status file (removes any stale status such as the startup welcome message)
 2. Writes the first 5 words of the user's prompt to the context file as a placeholder
 3. If `--ai-context` is enabled: spawns a background call to `claude --print` with model `claude-haiku-4-5-20251001`
 4. Haiku distills the full prompt into a 3–5 word summary (opt-in only — uses your subscription)
@@ -138,20 +138,15 @@ Additional hooks fire for lifecycle and permission events. These are only surfac
 ## Title Format
 
 ```
-<spinner> <project> (<branch>) | <task-summary> | <status>
+<project> (<branch>) | <task-summary> | <status>
 ```
 
 Example:
 ```
-✳ my-project (main) | Fix Auth Bug | ✏️ Editing
+my-project (main) | Fix Auth Bug | ✏️ Editing
 ```
 
 ### Components
-
-**Spinner** (animated, or static for completions)
-- Prepended to the entire title string
-- Mirrors Claude Code's internal spinner during active operations
-- Static (no animation) for completion events
 
 **Project & branch** (base title)
 - Taken from `.git/config` or as passed to `ccp`
@@ -170,11 +165,7 @@ Example:
 
 ## Idle Detection
 
-The monitor shows `💤 Idle` when:
-- The Stop hook fires and clears the status file
-- OR the status file has not been updated for 60+ seconds
-
-This ensures that even if hooks stop firing unexpectedly, the title will eventually show Idle rather than staying stuck on an outdated status.
+The monitor shows `💤 Idle` when the Stop hook fires and clears the status file.
 
 ## Welcome Status
 

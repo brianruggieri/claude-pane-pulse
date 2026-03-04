@@ -235,6 +235,13 @@ case "${mode}" in
         [[ -z "${raw_prompt}" ]] && exit 0
         _dbg "raw_prompt=${raw_prompt}"
 
+        # Clear any stale status (e.g. the startup "Welcome back" message) so
+        # the monitor shows idle phrases until a tool-specific status is emitted.
+        if [[ -n "${CCP_STATUS_FILE:-}" ]]; then
+            : > "${CCP_STATUS_FILE}" 2>/dev/null || true
+            _dbg "cleared status file on user-prompt"
+        fi
+
         # Write first-5-words placeholder immediately so the title updates at once
         initial=""
         initial=$(printf '%s' "${raw_prompt}" \

@@ -11,7 +11,7 @@
 
 ## ✨ Features
 
-- **🎬 Animated Status Updates** — Building..., Testing..., Pushing... with live progress spinner
+- **🎬 Live Status Updates** — Building..., Testing..., Pushing... with real-time status text in the pane title
 - **📊 Priority-Based Display** — Errors always show first, then active work, then completions
 - **🏗️ Hook-Based Architecture** — Injects hooks into `.claude/settings.local.json` for structured status events (no fragile output parsing)
 - **🔍 Auto-Title from Git** — Detects PR/issue/feature branches and generates titles automatically (PR #89, Issue #12, Feature: foo, etc.)
@@ -144,9 +144,9 @@ Pushing:    "⬆️ Pushing | Fix auth bug"
 Idle:       "💤 Idle | Fix auth bug"
 ```
 
-<!-- screenshot: title bar showing spinner and status through lifecycle -->
+<!-- screenshot: title bar showing status through lifecycle -->
 
-Each status is shown with an animated spinner (when active) and is cleared after the operation completes.
+Each status updates in real time and is cleared after the operation completes.
 
 ### Status Profiles
 
@@ -163,12 +163,12 @@ ccp --status-profile verbose "My task"
 ### Title Format
 
 ```
-spinner project(branch) | task summary | status
+project(branch) | task summary | status
 ```
 
-Example: `✳ my-project (main) | Fix Auth Bug | ✏️ Editing`
+Example: `my-project (main) | Fix Auth Bug | ✏️ Editing`
 
-The **spinner** shows animation during active operations. The **task summary** shows the first words of your prompt; with `--ai-context` enabled it becomes a 3–5 word AI-generated label. The **status** updates in real time based on hook events.
+The **task summary** shows the first words of your prompt; with `--ai-context` enabled it becomes a 3–5 word AI-generated label. The **status** updates in real time based on hook events.
 
 <!-- screenshot: iTerm2 split pane with multiple ccp titles showing different statuses -->
 

@@ -94,13 +94,13 @@ bash tests/test-suite.sh
 
 Tests cover:
 - `hook_runner.sh` event dispatch and status mapping
-- `animate_status` spinner sequence in `lib/monitor.sh`
+- Status monitoring behavior in `lib/monitor.sh`
 - `set_title` escape sequence output in `lib/title.sh`
 - Session save/find/cleanup lifecycle in `lib/session.sh`
 - `setup_ccp_hooks` / `teardown_ccp_hooks` lifecycle in `lib/hooks.sh`
 
-Set `CCP_DISABLE_PROMPT_DISTILL=1` when running tests to skip the claude-haiku
-context summarization subprocess.
+AI context summarization is disabled by default in tests. Set `CCP_ENABLE_AI_CONTEXT=true`
+to enable the claude-haiku context summarization subprocess when needed.
 
 Add tests for any new features or bug fixes.
 

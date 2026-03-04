@@ -4,9 +4,9 @@
 
 ccp wraps the Claude Code CLI to provide dynamic terminal pane titles. It injects hooks into `.claude/settings.local.json` that report what Claude is doing—editing, testing, thinking, etc. A background monitor converts these signals into live title updates.
 
-**Title format:** `spinner project(branch) | task summary | status`
+**Title format:** `project (branch) | task summary | status`
 
-**Example:** `✳ my-project (main) | Fix Auth Bug | 🧪 Testing`
+**Example:** `my-project (main) | Fix Auth Bug | 🧪 Testing`
 
 On startup, you see `👋 Welcome back, Brian` (from your git config). After you send your first message, the title shows the AI's task summary and updates in real time as Claude works.
 
