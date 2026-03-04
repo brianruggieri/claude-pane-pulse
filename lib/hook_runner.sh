@@ -249,9 +249,11 @@ case "${mode}" in
             | awk '{n=(NF<5?NF:5); for(i=1;i<=n;i++) printf "%s%s",$i,(i<n?" ":""); print ""}')
         [[ -n "${initial}" ]] && atomic_write "${CCP_CONTEXT_FILE}" "${initial}"
 
-        # Test hook: skip AI distillation when explicitly disabled.
-        if [[ "${CCP_DISABLE_PROMPT_DISTILL:-}" == "1" || -n "${CCP_DISABLE_SUMMARY:-}" ]]; then
-            _dbg "distillation disabled via CCP_DISABLE_PROMPT_DISTILL/CCP_DISABLE_SUMMARY"
+        # AI context summarization is opt-in (--ai-context flag / CCP_ENABLE_AI_CONTEXT=true).
+        # It sends your prompt text to claude-haiku and counts against your subscription.
+        # Skip unless explicitly enabled.
+        if [[ "${CCP_ENABLE_AI_CONTEXT:-false}" != "true" ]]; then
+            _dbg "AI context summarization not enabled (use --ai-context to enable)"
             exit 0
         fi
 

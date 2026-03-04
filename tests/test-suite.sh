@@ -18,11 +18,10 @@ source "${LIB_DIR}/hooks.sh"
 STATE_DIR=$(mktemp -d)
 SESSION_FILE="${STATE_DIR}/sessions.json"
 export STATE_DIR SESSION_FILE
-export CCP_DISABLE_PROMPT_DISTILL=1
 echo '[]' > "${SESSION_FILE}"
 
-# Avoid invoking the Claude CLI during tests.
-export CCP_DISABLE_SUMMARY=1
+# AI context summarization is opt-in (CCP_ENABLE_AI_CONTEXT=true).
+# Don't set it here — tests must not invoke the Claude CLI.
 
 # ── Test framework ────────────────────────────────────────────────────────────
 

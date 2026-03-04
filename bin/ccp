@@ -60,6 +60,8 @@ ${BLUE}ccp Options:${NC}
     --auto-title            Auto-detect title from git branch (default)
     --no-dynamic            Disable dynamic updates (static title)
     --status-profile MODE   Status surface: quiet (default) or verbose
+    --ai-context            Summarize prompts in title via claude-haiku (opt-in,
+                            uses your Claude subscription — see docs/ai-context.md)
     --goto TITLE            Re-open a previous session by title search
     --list, -l              List all active sessions
     --help, -h              Show this help
@@ -151,6 +153,7 @@ main() {
     local directory="${PWD}"
     local enable_dynamic=true
     local status_profile_cli=""
+    local enable_ai_context=false
     local claude_args=()
 
     # Initialize state directory
@@ -177,6 +180,10 @@ main() {
                 ;;
             --no-dynamic)
                 enable_dynamic=false
+                shift
+                ;;
+            --ai-context)
+                enable_ai_context=true
                 shift
                 ;;
             --status-profile)
@@ -360,6 +367,9 @@ main() {
     if [[ "${enable_dynamic}" = true ]]; then
         log_info "Dynamic titles: ${GREEN}enabled${NC}"
         log_info "Status profile: ${CCP_STATUS_PROFILE}"
+        if [[ "${enable_ai_context}" = true ]]; then
+            log_info "AI context:     ${GREEN}enabled${NC} (prompts summarized via claude-haiku — uses your subscription)"
+        fi
     fi
     if [[ ${#claude_args[@]} -gt 0 ]]; then
         log_info "Claude args: ${claude_args[*]}"
@@ -383,6 +393,9 @@ main() {
         export CCP_STATUS_FILE="${STATE_DIR}/status.$$.txt"
         export CCP_CONTEXT_FILE="${STATE_DIR}/context.$$.txt"
         export CCP_HOOK_RUNNER="${LIB_DIR}/hook_runner.sh"
+
+        # Export AI context opt-in flag for hook_runner.sh
+        export CCP_ENABLE_AI_CONTEXT="${enable_ai_context}"
 
         # Export project name and branch for the title prefix
         CCP_PROJECT_NAME=$(basename "${directory}")
