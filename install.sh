@@ -24,12 +24,12 @@ echo ""
 # ── Validate source directory ─────────────────────────────────────────────────
 
 if [[ ! -f "${SCRIPT_DIR}/bin/ccp" ]]; then
-    echo -e "${RED}✗ Error:${NC} bin/ccp not found. Run from the claude-pane-pulse project root." >&2
+    echo -e "${RED}✗ Error:${NC} bin/ccp not found. Run from the claude-code-pulse project root." >&2
     exit 1
 fi
 
 if [[ ! -d "${SCRIPT_DIR}/lib" ]]; then
-    echo -e "${RED}✗ Error:${NC} lib/ directory not found. Run from the claude-pane-pulse project root." >&2
+    echo -e "${RED}✗ Error:${NC} lib/ directory not found. Run from the claude-code-pulse project root." >&2
     exit 1
 fi
 
@@ -71,7 +71,7 @@ add_path_to_profile() {
         if ! grep -q 'HOME.*bin.*PATH\|PATH.*HOME.*bin' "${profile}" 2>/dev/null; then
             {
                 echo ""
-                echo "# Added by claude-pane-pulse installer"
+                echo "# Added by claude-code-pulse installer"
                 echo "${path_line}"
             } >> "${profile}"
             echo -e "  ${GREEN}✓${NC} Added ~/bin to PATH in ${profile}"
@@ -154,5 +154,5 @@ echo "  # List sessions"
 echo "  ccp --list"
 echo ""
 echo "For help: ccp --help"
-echo "Docs: https://github.com/brianruggieri/claude-pane-pulse"
+echo "Docs: https://github.com/brianruggieri/claude-code-pulse"
 echo ""

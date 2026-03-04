@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/core.sh - Core utility functions for claude-pane-pulse
+# lib/core.sh - Core utility functions for claude-code-pulse
 
 # Prevent double-sourcing
 [[ -n "${_CCP_CORE_SOURCED:-}" ]] && return
@@ -9,7 +9,7 @@ _CCP_CORE_SOURCED=1
 VERSION="1.0.0"
 # shellcheck disable=SC2034
 SCRIPT_NAME="ccp"
-STATE_DIR="${STATE_DIR:-${HOME}/.config/claude-pane-pulse}"
+STATE_DIR="${STATE_DIR:-${HOME}/.config/claude-code-pulse}"
 SESSION_FILE="${SESSION_FILE:-${STATE_DIR}/sessions.json}"
 
 # Colors
