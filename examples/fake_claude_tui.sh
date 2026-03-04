@@ -105,7 +105,7 @@ case "${SCENARIO}" in
         PROJECT="auth-service"
         BRANCH="feat/oauth2"
         TASK="Fix JWT expiry check"
-        STATUS_LABEL="✏️  Editing"
+        STATUS_LABEL="✏️ Editing"
         ;;
     testing)
         PROJECT="dashboard-ui"
@@ -123,7 +123,7 @@ case "${SCENARIO}" in
         PROJECT="infra-tools"
         BRANCH="chore/terraform-up"
         TASK="Plan Terraform upgrade"
-        STATUS_LABEL="💭 Thinking"
+        STATUS_LABEL="📖 Reading"
         ;;
     *)
         echo "Unknown scenario: ${SCENARIO}" >&2
@@ -268,7 +268,7 @@ render_thinking() {
     printf "  ${BOLD}2. aws_instance default_tags${R} — tag inheritance behavior\n"
     printf "     changed. Your ${CYN}modules/vpc/main.tf${R} relies on implicit…\n"
     blank
-    printf "  ${SPIN} Thinking…\n"
+    printf "  ${SPIN} Reading…\n"
     blank
     printf "  ${DIM}❯${R} \n"
 }

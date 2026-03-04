@@ -304,10 +304,10 @@ if $DO_AFTER; then
     # If ccp's title format changes, update these strings to match.
     info "Setting pane names (after)..."
     iterm_set_pane_names "${WIN_AFTER}" \
-        "auth-service (feat/oauth2) | Fix JWT expiry check | ✏️  Editing" \
+        "auth-service (feat/oauth2) | Fix JWT expiry check | ✏️ Editing" \
         "dashboard-ui (fix/layout-shift) | Audit component tests | 🧪 Testing" \
         "data-pipeline (feat/embeddings) | Fix TypeScript errors | 🔨 Building" \
-        "infra-tools (chore/terraform-up) | Plan Terraform upgrade | 💭 Thinking"
+        "infra-tools (chore/terraform-up) | Plan Terraform upgrade | 📖 Reading"
     sleep 0.4
 
     iterm_focus "${WIN_AFTER}"
