@@ -1,6 +1,6 @@
 # Dynamic Title System
 
-**claude-pane-pulse** updates your terminal pane title in real time to show what Claude Code is doing — building, testing, editing, thinking, and more.
+**claude-code-pulse** updates your terminal pane title in real time to show what Claude Code is doing — building, testing, editing, thinking, and more.
 
 ## How It Works
 
@@ -40,8 +40,8 @@ Claude Code parses the settings file and registers the hooks. As events fire (Pr
 Each hook event triggers `hook_runner.sh`, which:
 1. Receives the event JSON on stdin (contains tool name, command, response, etc.)
 2. Inspects the JSON to determine the status
-3. Writes the status string to `~/.config/claude-pane-pulse/status.<pid>.txt`
-4. Optionally writes a context summary to `~/.config/claude-pane-pulse/context.<pid>.txt`
+3. Writes the status string to `~/.config/claude-code-pulse/status.<pid>.txt`
+4. Optionally writes a context summary to `~/.config/claude-code-pulse/context.<pid>.txt`
 
 ### Background Monitor
 
@@ -161,7 +161,7 @@ my-project (main) | Fix Auth Bug | ✏️ Editing
 - The current emoji + status text
 - Updates every 1–3 seconds as operations progress
 
-<!-- screenshot: Terminal pane title bar showing "✳ claude-pane-pulse (feat-cleanup) | Update docs | ✏️ Editing" -->
+<!-- screenshot: Terminal pane title bar showing "✳ claude-code-pulse (feat-cleanup) | Update docs | ✏️ Editing" -->
 
 ## Idle Detection
 

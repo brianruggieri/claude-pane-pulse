@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a bug in Claude Pane Pulse
+about: Report a bug in Claude Code Pulse
 title: '[Bug] '
 labels: bug
 assignees: ''

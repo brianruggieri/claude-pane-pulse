@@ -1,13 +1,13 @@
-# **C**laude **C**ode **P**ane-Pulse &nbsp;`ccp`
+# **C**laude **C**ode **P**ulse &nbsp;`ccp`
 
 > Dynamic terminal titles for Claude Code — see what each agent is actually doing at a glance
 
-[![CI](https://github.com/brianruggieri/claude-pane-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/brianruggieri/claude-pane-pulse/actions/workflows/ci.yml)
+[![CI](https://github.com/brianruggieri/claude-code-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/brianruggieri/claude-code-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![macOS](https://img.shields.io/badge/macOS-Sonoma+-blue.svg)](https://www.apple.com/macos/)
 [![Bash](https://img.shields.io/badge/bash-3.2+-green.svg)](https://www.gnu.org/software/bash/)
 
-**C**laude **C**ode **P**ane-Pulse (`ccp`) wraps the Claude Code CLI to automatically update your terminal pane titles with real-time status — building, testing, pushing, committing, and more — so you always know what each agent is working on at a glance. Perfect for split-pane terminals running multiple Claude Code sessions.
+**C**laude **C**ode **P**ulse (`ccp`) wraps the Claude Code CLI to automatically update your terminal pane titles with real-time status — building, testing, pushing, committing, and more — so you always know what each agent is working on at a glance. Perfect for split-pane terminals running multiple Claude Code sessions.
 
 ### Before ccp
 
@@ -39,8 +39,8 @@ Each pane title shows the project, branch, current task, and live status — ind
 
 ```bash
 # Install
-git clone https://github.com/brianruggieri/claude-pane-pulse.git
-cd claude-pane-pulse
+git clone https://github.com/brianruggieri/claude-code-pulse.git
+cd claude-code-pulse
 ./install.sh
 
 # Use with auto-detection (default)
@@ -76,8 +76,8 @@ ccp "My task" -- --resume abc123
 ### Install
 
 ```bash
-git clone https://github.com/brianruggieri/claude-pane-pulse.git
-cd claude-pane-pulse
+git clone https://github.com/brianruggieri/claude-code-pulse.git
+cd claude-code-pulse
 ./install.sh
 ```
 
@@ -318,7 +318,7 @@ Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ```bash
 # Fork and clone
-git clone https://github.com/YOUR_USERNAME/claude-pane-pulse.git
+git clone https://github.com/YOUR_USERNAME/claude-code-pulse.git
 
 # Create feature branch
 git checkout -b feature/amazing-feature
@@ -342,7 +342,7 @@ MIT © Brian Ruggieri — see [LICENSE](LICENSE)
 
 ## 📮 Contact
 
-- **Issues**: [GitHub Issues](https://github.com/brianruggieri/claude-pane-pulse/issues)
+- **Issues**: [GitHub Issues](https://github.com/brianruggieri/claude-code-pulse/issues)
 - **Email**: brianruggieri@gmail.com
 
 ---

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ccp - Claude Pane Pulse: Dynamic terminal title manager for Claude Code
+# ccp - Claude Code Pulse: Dynamic terminal title manager for Claude Code
 # Version: 1.0.0
 
 set -euo pipefail
@@ -30,7 +30,7 @@ source "${LIB_DIR}/hooks.sh"
 
 show_help() {
     cat << EOF
-${GREEN}Claude Pane Pulse${NC} v${VERSION} - Dynamic terminal titles for Claude Code
+${GREEN}Claude Code Pulse${NC} v${VERSION} - Dynamic terminal titles for Claude Code
 
 ${BLUE}Usage:${NC}
     ${SCRIPT_NAME} [CCP OPTIONS] [NOTE] [DIRECTORY] [-- CLAUDE OPTIONS]
@@ -101,7 +101,7 @@ ${BLUE}Status Icons:${NC}
     💾 Committed   ⬆️ Pushing     📦 Installing      💭 Thinking
     🐛 Error       💤 Idle        🐳 Docker          🔀 Merging
 
-For more info: https://github.com/brianruggieri/claude-pane-pulse
+For more info: https://github.com/brianruggieri/claude-code-pulse
 EOF
 }
 

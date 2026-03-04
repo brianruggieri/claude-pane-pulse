@@ -19,13 +19,13 @@ brew install jq
 
 See [claude.ai/code](https://claude.ai/code) for installation instructions.
 
-## Install Claude Pane Pulse
+## Install Claude Code Pulse
 
 ### Quick install
 
 ```bash
-git clone https://github.com/brianruggieri/claude-pane-pulse.git
-cd claude-pane-pulse
+git clone https://github.com/brianruggieri/claude-code-pulse.git
+cd claude-code-pulse
 ./install.sh
 ```
 
@@ -85,6 +85,19 @@ brew install jq
 
 Install Claude Code CLI from [claude.ai/code](https://claude.ai/code).
 
+### Pane titles not visible in tmux
+
+ccp sets pane titles via OSC escape sequences, but they only appear in the pane border if you've enabled `pane-border-status`. Add to `~/.tmux.conf`:
+
+```
+set -g pane-border-status top
+set -g pane-border-format " #{pane_title} "
+```
+
+This is required for ccp to work as intended in tmux — without it, titles are set but never shown.
+
+Then reload: `tmux source-file ~/.tmux.conf`
+
 ### Title doesn't update in tmux
 
 Make sure your tmux config allows title changes. Add to `~/.tmux.conf`:
@@ -109,14 +122,14 @@ If you prefer not to use the installer:
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/brianruggieri/claude-pane-pulse.git
+git clone https://github.com/brianruggieri/claude-code-pulse.git
 
 # 2. Create directories
 mkdir -p ~/.local/share/ccp/bin ~/.local/share/ccp/lib ~/bin
 
 # 3. Copy files
-cp claude-pane-pulse/bin/ccp ~/.local/share/ccp/bin/
-cp claude-pane-pulse/lib/*.sh ~/.local/share/ccp/lib/
+cp claude-code-pulse/bin/ccp ~/.local/share/ccp/bin/
+cp claude-code-pulse/lib/*.sh ~/.local/share/ccp/lib/
 chmod +x ~/.local/share/ccp/bin/ccp
 
 # 4. Create symlink

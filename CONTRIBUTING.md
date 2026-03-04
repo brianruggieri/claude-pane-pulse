@@ -1,4 +1,4 @@
-# Contributing to **C**laude **C**ode **P**ane-Pulse
+# Contributing to **C**laude **C**ode **P**ulse
 
 Thank you for your interest in contributing! This guide covers everything you need to get started.
 
@@ -23,8 +23,8 @@ Thank you for your interest in contributing! This guide covers everything you ne
 ### Clone and run locally
 
 ```bash
-git clone https://github.com/brianruggieri/claude-pane-pulse.git
-cd claude-pane-pulse
+git clone https://github.com/brianruggieri/claude-code-pulse.git
+cd claude-code-pulse
 
 # Run directly from source (no install needed for dev)
 bash bin/ccp --help
@@ -36,7 +36,7 @@ bash bin/ccp --help
 ### Project structure
 
 ```
-claude-pane-pulse/
+claude-code-pulse/
 ├── bin/
 │   └── ccp                  # Main executable
 ├── lib/
@@ -128,7 +128,7 @@ Add tests for any new features or bug fixes.
 
 ## Reporting Bugs
 
-Use the [GitHub issue tracker](https://github.com/brianruggieri/claude-pane-pulse/issues).
+Use the [GitHub issue tracker](https://github.com/brianruggieri/claude-code-pulse/issues).
 
 Please include:
 - macOS version

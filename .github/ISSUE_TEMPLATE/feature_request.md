@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for Claude Pane Pulse
+about: Suggest an idea for Claude Code Pulse
 title: '[Feature] '
 labels: enhancement
 assignees: ''

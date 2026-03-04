@@ -2,10 +2,10 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in Claude Pane Pulse, please report it responsibly — **do not open a public GitHub issue**.
+If you discover a security vulnerability in Claude Code Pulse, please report it responsibly — **do not open a public GitHub issue**.
 
 **Contact:** brianruggieri@gmail.com
-**Subject prefix:** `[SECURITY] claude-pane-pulse`
+**Subject prefix:** `[SECURITY] claude-code-pulse`
 
 I will acknowledge receipt within 48 hours and provide a fix timeline.
 
@@ -24,7 +24,7 @@ For context when evaluating security:
 - **Hook injection**: On startup, ccp writes entries to `.claude/settings.local.json` in the project directory. These entries register `hook_runner.sh` as a Claude Code hook handler. Entries are PID-tagged and removed on exit.
 - **No network access**: ccp itself makes no network calls. The optional `--ai-context` feature runs `claude --print` (your local Claude CLI binary) — all network activity goes through your existing Claude account.
 - **No elevated privileges**: ccp runs entirely as your user. The installer copies files to `~/.local/share/ccp/` and symlinks to `~/bin/ccp` — no `sudo` required.
-- **State files**: Status and context are written to `~/.config/claude-pane-pulse/` (flat text files, no executable content).
+- **State files**: Status and context are written to `~/.config/claude-code-pulse/` (flat text files, no executable content).
 
 ## Supported Versions
 

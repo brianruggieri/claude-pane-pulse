@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/test-suite.sh - Claude Pane Pulse test suite
+# tests/test-suite.sh - Claude Code Pulse test suite
 
 set -euo pipefail
 

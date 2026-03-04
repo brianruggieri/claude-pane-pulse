@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uninstall.sh - Claude Pane Pulse uninstaller
+# uninstall.sh - Claude Code Pulse uninstaller
 
 set -euo pipefail
 
@@ -11,11 +11,11 @@ NC='\033[0m'
 
 INSTALL_DIR="${HOME}/.local/share/ccp"
 BIN_LINK="${HOME}/bin/ccp"
-CONFIG_DIR="${HOME}/.config/claude-pane-pulse"
+CONFIG_DIR="${HOME}/.config/claude-code-pulse"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo -e "${RED}Claude Pane Pulse${NC} - Uninstaller"
+echo -e "${RED}Claude Code Pulse${NC} - Uninstaller"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "This will remove:"
