@@ -301,10 +301,10 @@ if $DO_AFTER; then
     # Lock pane names via AppleScript — bypasses shell auto-title / job name
     info "Setting pane names (after)..."
     iterm_set_pane_names "${WIN_AFTER}" \
-        "✳ auth-service (feat/oauth2) | Fix JWT expiry check | ✏️  Editing" \
-        "✳ dashboard-ui (fix/layout-shift) | Audit component tests | 🧪 Testing" \
-        "· data-pipeline (feat/embeddings) | Fix TypeScript errors | 🔨 Building" \
-        "✳ infra-tools (chore/terraform-up) | Plan Terraform upgrade | 💭 Thinking"
+        "auth-service (feat/oauth2) | Fix JWT expiry check | ✏️  Editing" \
+        "dashboard-ui (fix/layout-shift) | Audit component tests | 🧪 Testing" \
+        "data-pipeline (feat/embeddings) | Fix TypeScript errors | 🔨 Building" \
+        "infra-tools (chore/terraform-up) | Plan Terraform upgrade | 💭 Thinking"
     sleep 0.4
 
     iterm_focus "${WIN_AFTER}"

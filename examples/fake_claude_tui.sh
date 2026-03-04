@@ -137,7 +137,7 @@ esac
 if [[ "${TITLE_MODE}" == "before" ]]; then
     set_title "${PROJECT} — claude"
 else
-    set_title "✳ ${PROJECT} (${BRANCH}) | ${TASK} | ${STATUS_LABEL}"
+    set_title "${PROJECT} (${BRANCH}) | ${TASK} | ${STATUS_LABEL}"
 fi
 
 # ── render scenario ───────────────────────────────────────────────────────────
@@ -286,7 +286,7 @@ esac
 if [[ "${TITLE_MODE}" == "before" ]]; then
     _pane_title="${PROJECT} — claude"
 else
-    _pane_title="✳ ${PROJECT} (${BRANCH}) | ${TASK} | ${STATUS_LABEL}"
+    _pane_title="${PROJECT} (${BRANCH}) | ${TASK} | ${STATUS_LABEL}"
 fi
 
 # Re-show cursor on exit
