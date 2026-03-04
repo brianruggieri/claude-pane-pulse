@@ -296,7 +296,7 @@ The old system scanned Claude Code's PTY output line-by-line, looking for keywor
 - Claude Code's output format changes between versions
 - Keyword matching is ambiguous (does "Building" mean building or just mentioned in text?)
 - Race conditions between status detection and tool completion
-- High CPU cost polling a FIFO every ~100ms
+- High CPU cost polling PTY output every ~100ms
 
 The hook-based system is:
 - **Declarative:** Claude Code tells us exactly what it's doing

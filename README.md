@@ -2,6 +2,7 @@
 
 > Dynamic terminal titles for Claude Code — see what each agent is actually doing at a glance
 
+[![CI](https://github.com/brianruggieri/claude-pane-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/brianruggieri/claude-pane-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![macOS](https://img.shields.io/badge/macOS-Sonoma+-blue.svg)](https://www.apple.com/macos/)
 [![Bash](https://img.shields.io/badge/bash-3.2+-green.svg)](https://www.gnu.org/software/bash/)
@@ -205,7 +206,7 @@ The **spinner** shows animation during active operations. The **task summary** s
 | 🧹 | Worktree removed | — | verbose |
 | 💤 | Idle | 10 | both |
 
-Higher priority statuses override lower ones. Completion events (✅, 💾, 🏁) always appear immediately. Idle only appears after 60 seconds of no FIFO activity.
+Higher priority statuses override lower ones. Completion events (✅, 💾, 🏁) always appear immediately. Idle only appears after 60 seconds of no hook activity.
 
 ## 🎯 Multi-Pane Workflow
 
