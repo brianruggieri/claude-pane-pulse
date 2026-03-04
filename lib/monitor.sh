@@ -160,41 +160,6 @@ extract_context() {
     echo "${context}|${priority}"
 }
 
-# animate_status: append a cycling spinner to active in-progress statuses.
-# Legacy: retained for test compatibility. Inlined in title_updater.
-# Uses Claude Code's exact spinner characters in their correct ping-pong order.
-# Source: reverse-engineered from raw terminal output; the original expression
-# array is ["·","✻","✽","✶","✳","✢"] driven by a triangle-wave oscillator,
-# producing a grow→shrink pulse rather than a one-way sweep.
-#
-# 10-frame ping-pong at ~0.15s/frame = 1.5s full cycle:
-#   · ✻ ✽ ✶ ✳ ✢  ✳ ✶ ✽ ✻  (then back to ·)
-#   0 1 2 3 4 5  6 7 8 9
-animate_status() {
-    local status="$1"
-    local frame="$2"
-
-    # Only animate operations still in progress (not completions or errors)
-    if [[ "${status}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${status}" =~ "✸" ]]; then
-        local spinner=""
-        case $((frame % 10)) in
-            0) spinner="·" ;;   # U+00B7 MIDDLE DOT          — grow start
-            1) spinner="✻" ;;   # U+273B TEARDROP-SPOKED ASTERISK
-            2) spinner="✽" ;;   # U+273D HEAVY TEARDROP-SPOKED ASTERISK
-            3) spinner="✶" ;;   # U+2736 SIX POINTED BLACK STAR
-            4) spinner="✳" ;;   # U+2733 EIGHT-SPOKED ASTERISK
-            5) spinner="✢" ;;   # U+2722 FOUR TEARDROP-SPOKED ASTERISK — peak
-            6) spinner="✳" ;;   # U+2733                     — shrink
-            7) spinner="✶" ;;   # U+2736
-            8) spinner="✽" ;;   # U+273D
-            9) spinner="✻" ;;   # U+273B
-        esac
-        echo "${status} ${spinner}"
-    else
-        echo "${status}"
-    fi
-}
-
 title_updater() {
     local base_title="$1"
 
@@ -203,18 +168,12 @@ title_updater() {
         set +e
 
         local current_context=""
-        local frame_counter=0
         local task_summary=""
         local clean_summary=""
         local prev_display_context=""
         local last_hook_check=$SECONDS
         local status_file="${CCP_STATUS_FILE:-}"
         local context_file="${CCP_CONTEXT_FILE:-}"
-
-        local tick_interval="1"
-        if [[ "${BASH_VERSINFO[0]:-3}" -ge 4 && -z "${TMUX:-}" ]]; then
-            tick_interval="0.15"
-        fi
 
         local title_prefix
         title_prefix=$(format_title_prefix "${CCP_PROJECT_NAME:-}" "${CCP_BRANCH_NAME:-}")
@@ -223,9 +182,7 @@ title_updater() {
         update_title_with_context "${base_title}" ""
 
         while true; do
-            sleep "${tick_interval}" || break
-
-            [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 10 ))
+            sleep 1 || break
 
             local current_time=$SECONDS
             if [[ $((current_time - last_hook_check)) -ge 1 ]]; then
@@ -261,23 +218,6 @@ title_updater() {
                 fi
             fi
 
-            # Inline animation — no $() fork.
-            local _spinner=""
-            if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${current_context}" =~ "✸" ]]; then
-                case $((frame_counter % 10)) in
-                    0) _spinner="·"  ;;
-                    1) _spinner="✻"  ;;
-                    2) _spinner="✽"  ;;
-                    3) _spinner="✶"  ;;
-                    4) _spinner="✳"  ;;
-                    5) _spinner="✢"  ;;
-                    6) _spinner="✳"  ;;
-                    7) _spinner="✶"  ;;
-                    8) _spinner="✽"  ;;
-                    9) _spinner="✻"  ;;
-                esac
-            fi
-
             local display_content=""
             if [[ -n "${clean_summary}" && -n "${current_context}" ]]; then
                 display_content="${clean_summary} | ${current_context}"
@@ -296,12 +236,7 @@ title_updater() {
                 _body="${display_content}"
             fi
 
-            local display_context=""
-            if [[ -n "${_spinner}" && -n "${_body}" ]]; then
-                display_context="${_spinner} ${_body}"
-            else
-                display_context="${_body}"
-            fi
+            local display_context="${_body}"
 
             if [[ "${display_context}" != "${prev_display_context}" ]]; then
                 update_title_with_context "${base_title}" "${display_context}"
@@ -327,6 +262,5 @@ cleanup_monitor() {
 
 export -f status_to_priority
 export -f extract_context
-export -f animate_status
 export -f title_updater
 export -f cleanup_monitor

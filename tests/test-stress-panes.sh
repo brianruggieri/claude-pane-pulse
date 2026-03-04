@@ -118,7 +118,6 @@ status_emoji() {
 
 export -f status_emoji
 export -f update_title_with_context
-export -f animate_status
 export -f status_to_priority
 
 run_pane() {
@@ -157,7 +156,6 @@ run_pane() {
     local current_context=""
     local current_priority=0
     local task_summary=""
-    local frame=0
     local end_time
     end_time=$(( $(date +%s) + 4 ))
 
@@ -184,19 +182,16 @@ run_pane() {
             [[ -n "${new_sum}" ]] && task_summary="${new_sum}"
         fi
 
-        local animated
-        animated=$(animate_status "${current_context}" "${frame}")
         local display=""
-        if [[ -n "${task_summary}" && -n "${animated}" ]]; then
-            display="${task_summary} | ${animated}"
+        if [[ -n "${task_summary}" && -n "${current_context}" ]]; then
+            display="${task_summary} | ${current_context}"
         elif [[ -n "${task_summary}" ]]; then
             display="${task_summary}"
-        elif [[ -n "${animated}" ]]; then
-            display="${animated}"
+        elif [[ -n "${current_context}" ]]; then
+            display="${current_context}"
         fi
 
         update_title_with_context "${base_title}" "${display}" > /dev/null 2>&1 || true
-        frame=$(( (frame + 1) % 4 ))
     done
 
     kill "${event_pid}" 2>/dev/null || true

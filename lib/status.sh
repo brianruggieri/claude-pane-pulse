@@ -5,41 +5,6 @@
 [[ -n "${_CCP_STATUS_SOURCED:-}" ]] && return
 _CCP_STATUS_SOURCED=1
 
-# spinner_frame: return the spinner character for a given frame.
-spinner_frame() {
-    local frame="$1"
-    case $((frame % 10)) in
-        0) echo "·" ;;   # U+00B7 MIDDLE DOT          — grow start
-        1) echo "✻" ;;   # U+273B TEARDROP-SPOKED ASTERISK
-        2) echo "✽" ;;   # U+273D HEAVY TEARDROP-SPOKED ASTERISK
-        3) echo "✶" ;;   # U+2736 SIX POINTED BLACK STAR
-        4) echo "✳" ;;   # U+2733 EIGHT-SPOKED ASTERISK
-        5) echo "✢" ;;   # U+2722 FOUR TEARDROP-SPOKED ASTERISK — peak
-        6) echo "✳" ;;   # U+2733                     — shrink
-        7) echo "✶" ;;   # U+2736
-        8) echo "✽" ;;   # U+273D
-        9) echo "✻" ;;   # U+273B
-    esac
-}
-
-# is_active_status: true if the status should be animated.
-is_active_status() {
-    local status="$1"
-    [[ "${status}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${status}" =~ "✸" ]]
-}
-
-# animate_status: append a cycling spinner to active in-progress statuses.
-animate_status() {
-    local status="$1"
-    local frame="$2"
-
-    if is_active_status "${status}"; then
-        echo "${status} $(spinner_frame "${frame}")"
-    else
-        echo "${status}"
-    fi
-}
-
 # status_to_priority: map status string to priority.
 status_to_priority() {
     local status="$1"
@@ -127,8 +92,5 @@ tool_status() {
     esac
 }
 
-export -f spinner_frame
-export -f is_active_status
-export -f animate_status
 export -f status_to_priority
 export -f tool_status

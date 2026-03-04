@@ -17,7 +17,7 @@ bin/ccp          Entry point — argument parsing, Claude Code launcher
 lib/core.sh      Constants, colors, logging, dependency checks
 lib/title.sh     set_title() and update_title_with_context()
 lib/session.sh   Session persistence (JSON via jq)
-lib/monitor.sh   Output parser, status extractor, animation engine
+lib/monitor.sh   Output parser, status extractor, title updater
 ```
 
 Each `lib/*.sh` file is independently sourceable (guarded against double-sourcing) but is designed to be loaded together by `bin/ccp`.

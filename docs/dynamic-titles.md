@@ -49,22 +49,6 @@ Higher-priority statuses always win. If Claude is both building (priority 80) an
 
 This ensures that **errors are never hidden** by lower-priority activity.
 
-## Animation
-
-Active in-progress operations (Building, Testing, Installing, Pushing, etc.) get animated dots to show they're still running:
-
-```
-PR #89 | 🔨 Building
-PR #89 | 🔨 Building.
-PR #89 | 🔨 Building..
-PR #89 | 🔨 Building...
-PR #89 | 🔨 Building     (loops back)
-```
-
-The animation cycles every ~0.8 seconds (tied to output processing).
-
-Completion statuses (✅ Tests passed, 💾 Committed, 🐛 Error) are **static** — they don't animate.
-
 ## Idle Detection
 
 If no significant status has been detected for 60 seconds, the title resets to:
