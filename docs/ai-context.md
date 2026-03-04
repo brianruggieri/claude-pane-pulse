@@ -80,10 +80,12 @@ Nothing is routed through ccp's infrastructure (there isn't any). The subprocess
 # Flag (per session)
 ccp --ai-context "My task"
 
-# Environment variable (permanent default)
+# Environment variable (always-on — add to ~/.zshrc or ~/.bashrc)
 export CCP_ENABLE_AI_CONTEXT=true
-ccp "My task"
+ccp "My task"  # AI context active without --ai-context flag
 ```
+
+The flag and env var are equivalent. The env var is the recommended approach if you always want AI context active.
 
 When enabled, ccp prints a disclosure at startup:
 

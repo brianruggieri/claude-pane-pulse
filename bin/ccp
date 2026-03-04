@@ -62,6 +62,7 @@ ${BLUE}ccp Options:${NC}
     --status-profile MODE   Status surface: quiet (default) or verbose
     --ai-context            Summarize prompts in title via claude-haiku (opt-in,
                             uses your Claude subscription — see docs/ai-context.md)
+                            Also: export CCP_ENABLE_AI_CONTEXT=true for always-on
     --goto TITLE            Re-open a previous session by title search
     --list, -l              List all active sessions
     --help, -h              Show this help
@@ -153,7 +154,7 @@ main() {
     local directory="${PWD}"
     local enable_dynamic=true
     local status_profile_cli=""
-    local enable_ai_context=false
+    local enable_ai_context="${CCP_ENABLE_AI_CONTEXT:-false}"
     local claude_args=()
 
     # Initialize state directory
