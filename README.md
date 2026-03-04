@@ -7,6 +7,8 @@
 
 `ccp` wraps the Claude Code CLI so your terminal pane titles show what Claude is actually doing. Just run `ccp` and it reads your git branch, figures out a title, and keeps the pane updated in real time as Claude edits, builds, tests, and commits.
 
+![ccp live demo: pane title cycling through Thinking, Reading, Editing, Testing, Tests passed, Committed, and Standing by](docs/screenshots/demo.apng)
+
 ### Before ccp
 
 Generic titles. You have no idea what's happening in each pane.
