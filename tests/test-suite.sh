@@ -20,6 +20,9 @@ SESSION_FILE="${STATE_DIR}/sessions.json"
 export STATE_DIR SESSION_FILE
 echo '[]' > "${SESSION_FILE}"
 
+# Avoid invoking the Claude CLI during tests.
+export CCP_DISABLE_SUMMARY=1
+
 # ── Test framework ────────────────────────────────────────────────────────────
 
 TESTS_RUN=0

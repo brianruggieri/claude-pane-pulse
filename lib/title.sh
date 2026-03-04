@@ -5,19 +5,64 @@
 [[ -n "${_CCP_TITLE_SOURCED:-}" ]] && return
 _CCP_TITLE_SOURCED=1
 
-# Set terminal title — per-pane icon name (OSC 1) on iTerm2/modern terminals,
-# window title (OSC 2) on Terminal.app which ignores OSC 1.
-set_title() {
+# detect_terminal_backend: probe the environment and set CCP_TERMINAL_BACKEND.
+# Called once at source time.  Tests can override CCP_TERMINAL_BACKEND directly.
+#
+# Backend → write strategy:
+#   iterm2 / wezterm / osc1  → OSC 1 (per-pane icon name) + clear OSC 2
+#   apple-terminal / ghostty / osc2 → OSC 2 (window title) + clear OSC 1
+#   kitty                    → kitty @ set-window-title (falls back to OSC 1)
+#
+# tmux passthrough is layered on top by _ccp_write_title() regardless of backend:
+# when $TMUX is set, DCS passthrough sequences + tmux rename-window are always emitted.
+detect_terminal_backend() {
+    if [[ "${TERM_PROGRAM:-}" == "iTerm.app" ]]; then
+        CCP_TERMINAL_BACKEND="iterm2"
+    elif [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]]; then
+        CCP_TERMINAL_BACKEND="apple-terminal"
+    elif [[ "${TERM_PROGRAM:-}" == "WezTerm" ]]; then
+        CCP_TERMINAL_BACKEND="wezterm"
+    elif [[ "${TERM_PROGRAM:-}" == "ghostty" ]]; then
+        CCP_TERMINAL_BACKEND="ghostty"
+    elif [[ -n "${KITTY_PID:-}" || "${TERM_PROGRAM:-}" == "kitty" ]]; then
+        CCP_TERMINAL_BACKEND="kitty"
+    else
+        # Default: OSC 1 — works in iTerm2 (unset TERM_PROGRAM) and most modern terminals
+        CCP_TERMINAL_BACKEND="osc1"
+    fi
+    export CCP_TERMINAL_BACKEND
+}
+
+# _ccp_write_title: private dispatch — write title to the detected terminal backend.
+# Always adds tmux DCS passthrough + rename-window when $TMUX is set.
+_ccp_write_title() {
     local title="$1"
 
-    if [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]]; then
-        printf '\033]1;\007'
-        printf '\033]2;%s\007' "${title}"
-    else
-        printf '\033]1;%s\007' "${title}"
-        printf '\033]2;\007'
-    fi
+    case "${CCP_TERMINAL_BACKEND:-osc1}" in
+        iterm2|wezterm|osc1)
+            printf '\033]1;%s\007' "${title}"
+            printf '\033]2;\007'
+            ;;
+        apple-terminal|ghostty|osc2)
+            printf '\033]1;\007'
+            printf '\033]2;%s\007' "${title}"
+            ;;
+        kitty)
+            if command -v kitty &>/dev/null 2>&1; then
+                kitty @ set-window-title "${title}" 2>/dev/null || true
+            else
+                printf '\033]1;%s\007' "${title}"
+                printf '\033]2;\007'
+            fi
+            ;;
+        *)
+            printf '\033]1;%s\007' "${title}"
+            printf '\033]2;\007'
+            ;;
+    esac
 
+    # tmux: add DCS passthrough + rename-window so the title propagates to the
+    # outer terminal even when the backend already handled it above.
     if [[ -n "${TMUX:-}" ]]; then
         # shellcheck disable=SC1003
         printf '\033Ptmux;\033\033]1;%s\007\033\\' "${title}"
@@ -25,9 +70,13 @@ set_title() {
         tmux set-window-option -q automatic-rename off 2>/dev/null || true
         tmux rename-window "${title}" 2>/dev/null || true
     fi
+}
 
-    # CCP_TITLE_LOG: append each title to a log file (used by e2e tests).
-    # Use || true so a bad/unwritable path never terminates ccp under set -e.
+# set_title: set the terminal title to a static string.
+set_title() {
+    local title="$1"
+    _ccp_write_title "${title}"
+
     if [[ -n "${CCP_TITLE_LOG:-}" ]]; then
         mkdir -p -- "$(dirname -- "${CCP_TITLE_LOG}")" 2>/dev/null || true
         echo "${title}" >> "${CCP_TITLE_LOG}" 2>/dev/null || true
@@ -39,16 +88,9 @@ set_title() {
 # CORE PRINCIPLE: ccp only touches terminal titles — it never writes to
 # stdout/stderr or modifies Claude's output in any way.
 #
-# OSC escape sequences:
-#   \033]1; = icon name  → per-pane title bar in iTerm2 split-pane view
-#   \033]2; = window title → app-level macOS title bar (shared across all panes)
-#
-# We write the full dynamic content to OSC 1 so each pane shows its own
-# independent status.  We clear OSC 2 so ccp doesn't pollute the app-level
-# title bar (each pane owns only its own pane title, not the whole window).
-#
-# Terminal.app exception: it ignores OSC 1 and only renders OSC 2, so we
-# fall back to writing the window title there.
+# When context is provided it becomes the full display string (the base_title
+# is embedded in the prefix that title_updater builds before calling here).
+# When context is empty the base_title is shown directly.
 update_title_with_context() {
     local base_title="$1"
     local context="${2:-}"
@@ -60,23 +102,7 @@ update_title_with_context() {
         display="${base_title}"
     fi
 
-    if [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]]; then
-        # Terminal.app only renders the window title (OSC 2)
-        printf '\033]1;\007'
-        printf '\033]2;%s\007' "${display}"
-    else
-        # iTerm2, Kitty, WezTerm, etc.: OSC 1 drives the per-pane title bar
-        printf '\033]1;%s\007' "${display}"
-        printf '\033]2;\007'   # clear window title — don't touch the app title bar
-    fi
-
-    if [[ -n "${TMUX:-}" ]]; then
-        # shellcheck disable=SC1003
-        printf '\033Ptmux;\033\033]1;%s\007\033\\' "${display}"
-        printf '\033Ptmux;\033\033]2;\007\033\\'
-        tmux set-window-option -q automatic-rename off 2>/dev/null || true
-        tmux rename-window "${display}" 2>/dev/null || true
-    fi
+    _ccp_write_title "${display}"
 
     if [[ -n "${CCP_TITLE_LOG:-}" ]]; then
         mkdir -p -- "$(dirname -- "${CCP_TITLE_LOG}")" 2>/dev/null || true
@@ -88,5 +114,10 @@ update_title_with_context() {
     fi
 }
 
+# Detect backend at source time (tests can override CCP_TERMINAL_BACKEND after sourcing)
+detect_terminal_backend
+
+export -f detect_terminal_backend
+export -f _ccp_write_title
 export -f set_title
 export -f update_title_with_context

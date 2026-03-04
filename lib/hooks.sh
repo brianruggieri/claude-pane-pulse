@@ -33,22 +33,30 @@ setup_ccp_hooks() {
     # our runner path.  This handles both clean teardown (entries have _ccp_pid)
     # and crash/legacy cases (entries lack _ccp_pid tag).  Entries whose command
     # does NOT reference our runner are left untouched (user's own hooks).
-    local pre_cmd prompt_cmd stop_cmd
+    local pre_cmd prompt_cmd stop_cmd post_cmd post_fail_cmd
     pre_cmd="bash \"${hook_runner_path}\" pre-tool"
     prompt_cmd="bash \"${hook_runner_path}\" user-prompt"
     stop_cmd="bash \"${hook_runner_path}\" stop"
+    post_cmd="bash \"${hook_runner_path}\" post-tool"
+    post_fail_cmd="bash \"${hook_runner_path}\" post-tool-failure"
     local deduped
     deduped=$(printf '%s' "${existing_json}" | jq \
-        --arg pre    "${pre_cmd}" \
-        --arg prompt "${prompt_cmd}" \
-        --arg stop   "${stop_cmd}" '
+        --arg pre       "${pre_cmd}" \
+        --arg prompt    "${prompt_cmd}" \
+        --arg stop      "${stop_cmd}" \
+        --arg post      "${post_cmd}" \
+        --arg post_fail "${post_fail_cmd}" '
         def not_ccp(cmd): (.hooks // []) | map(.command == cmd) | any | not;
-        .hooks.PreToolUse       = [(.hooks.PreToolUse       // [])[] | select(not_ccp($pre))]    |
-        .hooks.UserPromptSubmit = [(.hooks.UserPromptSubmit // [])[] | select(not_ccp($prompt))] |
-        .hooks.Stop             = [(.hooks.Stop             // [])[] | select(not_ccp($stop))]   |
-        if (.hooks.PreToolUse     | length) == 0 then del(.hooks.PreToolUse)     else . end |
-        if (.hooks.UserPromptSubmit | length) == 0 then del(.hooks.UserPromptSubmit) else . end |
-        if (.hooks.Stop           | length) == 0 then del(.hooks.Stop)           else . end |
+        .hooks.PreToolUse          = [(.hooks.PreToolUse          // [])[] | select(not_ccp($pre))]       |
+        .hooks.UserPromptSubmit    = [(.hooks.UserPromptSubmit    // [])[] | select(not_ccp($prompt))]    |
+        .hooks.Stop                = [(.hooks.Stop                // [])[] | select(not_ccp($stop))]      |
+        .hooks.PostToolUse         = [(.hooks.PostToolUse         // [])[] | select(not_ccp($post))]      |
+        .hooks.PostToolUseFailure  = [(.hooks.PostToolUseFailure  // [])[] | select(not_ccp($post_fail))] |
+        if (.hooks.PreToolUse         | length) == 0 then del(.hooks.PreToolUse)         else . end |
+        if (.hooks.UserPromptSubmit   | length) == 0 then del(.hooks.UserPromptSubmit)   else . end |
+        if (.hooks.Stop               | length) == 0 then del(.hooks.Stop)               else . end |
+        if (.hooks.PostToolUse        | length) == 0 then del(.hooks.PostToolUse)        else . end |
+        if (.hooks.PostToolUseFailure | length) == 0 then del(.hooks.PostToolUseFailure) else . end |
         if ((.hooks // {}) == {}) then del(.hooks) else . end
     ' 2>/dev/null) && existing_json="${deduped}" || true
 
@@ -72,6 +80,16 @@ setup_ccp_hooks() {
          .hooks.Stop = ((.hooks.Stop // []) + [
              {"_ccp_pid": $pid, "hooks": [
                  {"type": "command", "command": ("bash \"" + $runner + "\" stop"), "timeout": 5000, "async": true}
+             ]}
+         ]) |
+         .hooks.PostToolUse = ((.hooks.PostToolUse // []) + [
+             {"_ccp_pid": $pid, "matcher": ".*", "hooks": [
+                 {"type": "command", "command": ("bash \"" + $runner + "\" post-tool"), "timeout": 5000, "async": true}
+             ]}
+         ]) |
+         .hooks.PostToolUseFailure = ((.hooks.PostToolUseFailure // []) + [
+             {"_ccp_pid": $pid, "matcher": ".*", "hooks": [
+                 {"type": "command", "command": ("bash \"" + $runner + "\" post-tool-failure"), "timeout": 5000, "async": true}
              ]}
          ])
         ') || return 0
@@ -97,12 +115,16 @@ teardown_ccp_hooks() {
     # Filter out our hook entries from each hook type array
     local cleaned
     cleaned=$(jq --arg pid "${session_pid}" '
-        .hooks.PreToolUse = [(.hooks.PreToolUse // [])[] | select(._ccp_pid != $pid)] |
-        .hooks.UserPromptSubmit = [(.hooks.UserPromptSubmit // [])[] | select(._ccp_pid != $pid)] |
-        .hooks.Stop = [(.hooks.Stop // [])[] | select(._ccp_pid != $pid)] |
-        if (.hooks.PreToolUse | length) == 0 then del(.hooks.PreToolUse) else . end |
-        if (.hooks.UserPromptSubmit | length) == 0 then del(.hooks.UserPromptSubmit) else . end |
-        if (.hooks.Stop | length) == 0 then del(.hooks.Stop) else . end |
+        .hooks.PreToolUse         = [(.hooks.PreToolUse         // [])[] | select(._ccp_pid != $pid)] |
+        .hooks.UserPromptSubmit   = [(.hooks.UserPromptSubmit   // [])[] | select(._ccp_pid != $pid)] |
+        .hooks.Stop               = [(.hooks.Stop               // [])[] | select(._ccp_pid != $pid)] |
+        .hooks.PostToolUse        = [(.hooks.PostToolUse        // [])[] | select(._ccp_pid != $pid)] |
+        .hooks.PostToolUseFailure = [(.hooks.PostToolUseFailure // [])[] | select(._ccp_pid != $pid)] |
+        if (.hooks.PreToolUse         | length) == 0 then del(.hooks.PreToolUse)         else . end |
+        if (.hooks.UserPromptSubmit   | length) == 0 then del(.hooks.UserPromptSubmit)   else . end |
+        if (.hooks.Stop               | length) == 0 then del(.hooks.Stop)               else . end |
+        if (.hooks.PostToolUse        | length) == 0 then del(.hooks.PostToolUse)        else . end |
+        if (.hooks.PostToolUseFailure | length) == 0 then del(.hooks.PostToolUseFailure) else . end |
         if ((.hooks // {}) == {}) then del(.hooks) else . end
         ' "${settings_file}" 2>/dev/null) || return 0
 

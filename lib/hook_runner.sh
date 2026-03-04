@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # lib/hook_runner.sh - Standalone hook runner for ccp
-# Called by Claude Code's PreToolUse/UserPromptSubmit/Stop hooks.
+# Called by Claude Code's PreToolUse/PostToolUse/PostToolUseFailure/UserPromptSubmit/Stop hooks.
 # Reads hook JSON from stdin, writes status/context to CCP files.
 #
-# Usage: bash hook_runner.sh <pre-tool|user-prompt|stop>
+# Usage: bash hook_runner.sh <pre-tool|post-tool|post-tool-failure|user-prompt|stop>
 # Env:   CCP_STATUS_FILE  - path to write current status
 #        CCP_CONTEXT_FILE - path to write task context (user prompt)
 #        CCP_DEBUG_LOG    - optional path for debug output
@@ -16,6 +16,10 @@ set -uo pipefail
 # Claude Code may invoke hooks with a minimal PATH (e.g. /usr/bin:/bin only).
 PATH="/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
 export PATH
+
+_HOOK_RUNNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/status.sh
+source "${_HOOK_RUNNER_DIR}/status.sh"
 
 # Debug helper — writes to CCP_DEBUG_LOG if set, otherwise silent.
 _dbg() {
@@ -76,44 +80,7 @@ case "${mode}" in
         command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
 
         status=""
-        case "${tool}" in
-            Edit|Write|MultiEdit|NotebookEdit)
-                status="✏️ Editing"
-                ;;
-            Read|Glob|Grep)
-                status="📖 Reading"
-                ;;
-            WebFetch|WebSearch)
-                status="🌐 Browsing"
-                ;;
-            Task|Agent)
-                status="🤖 Delegating"
-                ;;
-            Bash)
-                if [[ "${command_str}" =~ (jest|vitest|pytest|mocha|rspec|go[[:space:]]test|cargo[[:space:]]test|phpunit|bun[[:space:]]test|npm[[:space:]]test|yarn[[:space:]]test) ]]; then
-                    status="🧪 Testing"
-                elif [[ "${command_str}" =~ (webpack|esbuild|tsc[[:space:]]|vite.*build|cargo[[:space:]]build|make[[:space:]]|cmake|gradle|mvn[[:space:]]package|npm[[:space:]]run.*build|yarn.*build) ]]; then
-                    status="🔨 Building"
-                elif [[ "${command_str}" =~ (npm[[:space:]]+(install|add|ci)|yarn[[:space:]]+(install|add)|pip[[:space:]]install|cargo[[:space:]]add) ]]; then
-                    status="📦 Installing"
-                elif [[ "${command_str}" =~ git[[:space:]]+push ]]; then
-                    status="⬆️ Pushing"
-                elif [[ "${command_str}" =~ git[[:space:]]+pull ]]; then
-                    status="⬇️ Pulling"
-                elif [[ "${command_str}" =~ git[[:space:]]+merge ]]; then
-                    status="🔀 Merging"
-                elif [[ "${command_str}" =~ docker ]]; then
-                    status="🐳 Docker"
-                else
-                    status="🖥️ Running"
-                fi
-                ;;
-            *)
-                if [[ -n "${tool}" ]]; then
-                    status="🔧 ${tool}"
-                fi
-                ;;
-        esac
+        status="$(tool_status "${tool}" "${command_str}")"
 
         _dbg "tool=${tool} status=${status}"
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
@@ -142,6 +109,11 @@ case "${mode}" in
         initial=$(printf '%s' "${raw_prompt}" \
             | awk '{n=(NF<5?NF:5); for(i=1;i<=n;i++) printf "%s%s",$i,(i<n?" ":""); print ""}')
         [[ -n "${initial}" ]] && atomic_write "${CCP_CONTEXT_FILE}" "${initial}"
+
+        if [[ -n "${CCP_DISABLE_SUMMARY:-}" ]]; then
+            _dbg "summary disabled (CCP_DISABLE_SUMMARY set)"
+            exit 0
+        fi
 
         # Background AI distillation — rewrites the context file with a proper
         # 3-5 word semantic summary once the haiku call completes (~1-3s).
@@ -184,6 +156,57 @@ case "${mode}" in
         _dbg "clearing status file"
         # Empty status signals idle to the monitor on the next heartbeat
         atomic_write "${CCP_STATUS_FILE}" ""
+        ;;
+
+    post-tool)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+
+        tool=""
+        tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
+        # Only Bash tool output produces completion events
+        [[ "${tool}" != "Bash" ]] && exit 0
+
+        # tool_response may be a string or a JSON object — normalise to string
+        tool_response=""
+        tool_response=$(printf '%s' "${json_input}" | jq -r '
+            .tool_response | if type == "object" then tostring else . end // ""
+        ' 2>/dev/null) || true
+
+        command_str=""
+        command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
+
+        status=""
+        if [[ "${tool_response}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+passed ]]; then
+            status="✅ Tests passed"
+        elif [[ "${tool_response}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+(failed|failing) ]]; then
+            status="❌ Tests failed"
+        elif [[ "${command_str}" =~ git[[:space:]]+commit && "${tool_response}" =~ ^\[ ]]; then
+            status="💾 Committed"
+        fi
+
+        _dbg "post-tool tool=${tool} status=${status}"
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        ;;
+
+    post-tool-failure)
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+
+        tool=""
+        tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
+
+        command_str=""
+        command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
+
+        status=""
+        if [[ "${tool}" == "Bash" ]] && \
+           [[ "${command_str}" =~ (jest|vitest|pytest|mocha|rspec|go[[:space:]]test|cargo[[:space:]]test|phpunit|bun[[:space:]]test|npm[[:space:]]test|yarn[[:space:]]test) ]]; then
+            status="❌ Tests failed"
+        else
+            status="🐛 Error"
+        fi
+
+        _dbg "post-tool-failure tool=${tool} status=${status}"
+        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
         ;;
 esac
 

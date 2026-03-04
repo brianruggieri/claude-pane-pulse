@@ -10,6 +10,8 @@ _MONITOR_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_MONITOR_SCRIPT_DIR}/core.sh"
 # shellcheck source=lib/title.sh
 source "${_MONITOR_SCRIPT_DIR}/title.sh"
+# shellcheck source=lib/status.sh
+source "${_MONITOR_SCRIPT_DIR}/status.sh"
 
 # ── Status priority levels ────────────────────────────────────────────────────
 # 🐛 Error          = 100
@@ -28,31 +30,6 @@ source "${_MONITOR_SCRIPT_DIR}/title.sh"
 # 🖥️ Running        = 55  (catch-all for unrecognised ● Bash() lines)
 # 💤 Idle           = 10
 
-# ── status_to_priority ────────────────────────────────────────────────────────
-# Map a status string (as written by hook_runner.sh) to a priority integer.
-status_to_priority() {
-    local status="$1"
-    if [[ "${status}" =~ "🐛 Error" ]]; then
-        echo 100
-    elif [[ "${status}" =~ "❌ Tests failed" ]]; then
-        echo 90
-    elif [[ "${status}" =~ (Building|Testing|Installing) ]]; then
-        echo 80
-    elif [[ "${status}" =~ (Pushing|Pulling|Merging) ]]; then
-        echo 75
-    elif [[ "${status}" =~ (Docker|Thinking|Delegating) ]]; then
-        echo 70
-    elif [[ "${status}" =~ "✏️ Editing" ]]; then
-        echo 65
-    elif [[ "${status}" =~ (Tests\ passed|Committed) ]]; then
-        echo 60
-    elif [[ "${status}" =~ (Reading|Browsing|Running) ]]; then
-        echo 55
-    else
-        echo 50
-    fi
-}
-
 # ── extract_context ───────────────────────────────────────────────────────────
 # Parse a stripped line of output and return "status|priority".
 # Empty status means no match — caller keeps the previous context.
@@ -62,9 +39,7 @@ status_to_priority() {
 #   • Build/test/install patterns match both raw command output AND Claude Code's
 #     "● Bash(command...)" tool-call headers, so they fire the moment Claude
 #     decides to run a command rather than only after the command prints output.
-#   • Thinking is detected structurally: any "● <word>..." line means Claude is
-#     processing, regardless of the specific phrase Claude uses ("Dilly-dallying",
-#     "Thinking", "Pondering", or any future variant).
+#   • Thinking is detected via FIFO liveness + hooks, not text parsing.
 #   • File-editing is detected from "● Edit(" / "● Write(" tool-call headers.
 #   • A generic "● Bash(" catch-all covers any shell command not matched above.
 extract_context() {
@@ -148,40 +123,6 @@ extract_context() {
     fi
 
     echo "${context}|${priority}"
-}
-
-# animate_status: append a cycling spinner to active in-progress statuses.
-# Uses Claude Code's exact spinner characters in their correct ping-pong order.
-# Source: reverse-engineered from raw terminal output; the original expression
-# array is ["·","✻","✽","✶","✳","✢"] driven by a triangle-wave oscillator,
-# producing a grow→shrink pulse rather than a one-way sweep.
-#
-# 10-frame ping-pong at ~0.15s/frame = 1.5s full cycle:
-#   · ✻ ✽ ✶ ✳ ✢  ✳ ✶ ✽ ✻  (then back to ·)
-#   0 1 2 3 4 5  6 7 8 9
-animate_status() {
-    local status="$1"
-    local frame="$2"
-
-    # Only animate operations still in progress (not completions or errors)
-    if [[ "${status}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${status}" =~ "✸" ]]; then
-        local spinner=""
-        case $((frame % 10)) in
-            0) spinner="·" ;;   # U+00B7 MIDDLE DOT          — grow start
-            1) spinner="✻" ;;   # U+273B TEARDROP-SPOKED ASTERISK
-            2) spinner="✽" ;;   # U+273D HEAVY TEARDROP-SPOKED ASTERISK
-            3) spinner="✶" ;;   # U+2736 SIX POINTED BLACK STAR
-            4) spinner="✳" ;;   # U+2733 EIGHT-SPOKED ASTERISK
-            5) spinner="✢" ;;   # U+2722 FOUR TEARDROP-SPOKED ASTERISK — peak
-            6) spinner="✳" ;;   # U+2733                     — shrink
-            7) spinner="✶" ;;   # U+2736
-            8) spinner="✽" ;;   # U+273D
-            9) spinner="✻" ;;   # U+273B
-        esac
-        echo "${status} ${spinner}"
-    else
-        echo "${status}"
-    fi
 }
 
 # monitor_claude_output: run Claude Code with real-time title updates
@@ -381,19 +322,8 @@ monitor_claude_output() {
                 # FRONT of the title: "✳ project (branch) | summary | status"
                 # rather than appended to the status text.
                 local _spinner=""
-                if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${current_context}" =~ "✸" ]]; then
-                    case $((frame_counter % 10)) in
-                        0) _spinner="·"  ;;
-                        1) _spinner="✻"  ;;
-                        2) _spinner="✽"  ;;
-                        3) _spinner="✶"  ;;
-                        4) _spinner="✳"  ;;
-                        5) _spinner="✢"  ;;
-                        6) _spinner="✳"  ;;
-                        7) _spinner="✶"  ;;
-                        8) _spinner="✽"  ;;
-                        9) _spinner="✻"  ;;
-                    esac
+                if is_active_status "${current_context}"; then
+                    _spinner="$(spinner_frame "${frame_counter}")"
                 fi
 
                 # Compose body: [prefix][summary | ]status
@@ -464,8 +394,6 @@ cleanup_monitor() {
     fi
 }
 
-export -f status_to_priority
 export -f extract_context
-export -f animate_status
 export -f monitor_claude_output
 export -f cleanup_monitor
