@@ -223,43 +223,40 @@ sleep 0.3
 
 # ── assemble GIF ──────────────────────────────────────────────────────────────
 
-heading "Assembling GIF"
+heading "Assembling APNG"
 
-OUT="${SHOTS_DIR}/demo.gif"
+OUT="${SHOTS_DIR}/demo.apng"
 
-# Build ImageMagick argument list: -delay <cs> frame.png pairs
-im_args=()
-for i in "${!IM_DELAYS[@]}"; do
-    frame_n=$(( i + 1 ))
-    padded=$(printf "%03d" "${frame_n}")
-    im_args+=( -delay "${IM_DELAYS[$i]}" "${FRAMES_DIR}/frame_${padded}.png" )
-done
-
-# Crop each frame: remove transparent shadow padding added by screencapture -l,
-# then trim any remaining whitespace. This leaves just the tight window chrome.
-cropped_args=()
+# Crop each frame: flatten alpha to white, trim shadow padding from screencapture -l.
+info "Processing frames..."
 for i in "${!IM_DELAYS[@]}"; do
     frame_n=$(( i + 1 ))
     padded=$(printf "%03d" "${frame_n}")
     src="${FRAMES_DIR}/frame_${padded}.png"
     cropped="${FRAMES_DIR}/cropped_${padded}.png"
     magick "${src}" -background white -alpha remove -alpha off -trim +repage "${cropped}"
-    cropped_args+=( -delay "${IM_DELAYS[$i]}" "${cropped}" )
 done
 
-magick "${cropped_args[@]}" \
-    -loop 0 \
-    -layers Optimize \
-    "${OUT}"
+# Build ffmpeg concat file with per-frame durations (in seconds).
+# APNG via ffmpeg preserves full PNG quality — no palette reduction, no dithering.
+CONCAT_FILE="${FRAMES_DIR}/concat.txt"
+> "${CONCAT_FILE}"
+for i in "${!IM_DELAYS[@]}"; do
+    frame_n=$(( i + 1 ))
+    padded=$(printf "%03d" "${frame_n}")
+    duration_s=$(python3 -c "print(${IM_DELAYS[$i]} / 100)")
+    printf "file 'cropped_%s.png'\nduration %s\n" "${padded}" "${duration_s}" >> "${CONCAT_FILE}"
+done
+# ffmpeg concat requires the last frame listed twice (duration ignored on final entry)
+last_padded=$(printf "%03d" "${#IM_DELAYS[@]}")
+printf "file 'cropped_%s.png'\n" "${last_padded}" >> "${CONCAT_FILE}"
 
-info "GIF assembled: ${OUT}"
+ffmpeg -y -f concat -safe 0 -i "${CONCAT_FILE}" \
+    -plays 0 \
+    -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+    "${OUT}" 2>/dev/null
 
-# Optimize with gifsicle if available
-if command -v gifsicle &>/dev/null; then
-    info "Optimizing with gifsicle..."
-    gifsicle --optimize=3 --batch "${OUT}"
-    info "Optimized: $(du -sh "${OUT}" | awk '{print $1}')"
-fi
+info "APNG assembled: ${OUT} ($(du -sh "${OUT}" | awk '{print $1}'))"
 
 # ── summary ───────────────────────────────────────────────────────────────────
 
@@ -267,6 +264,6 @@ heading "Done"
 printf "  Output: ${BOLD}%s${NC}\n" "${OUT}"
 printf "  Size:   %s\n\n" "$(du -sh "${OUT}" | awk '{print $1}')"
 printf "  To embed in README:\n"
-printf "  ${DIM}![ccp demo](docs/screenshots/demo.gif)${NC}\n\n"
+printf "  ${DIM}![ccp demo](docs/screenshots/demo.apng)${NC}\n\n"
 printf "  To re-run:\n"
 printf "  ${DIM}bash examples/gif-demo.sh${NC}\n\n"
