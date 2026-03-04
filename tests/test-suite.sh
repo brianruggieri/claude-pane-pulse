@@ -90,26 +90,6 @@ assert_empty() {
     fi
 }
 
-# ── Tests: animate_status ─────────────────────────────────────────────────────
-
-echo ""
-echo "animate_status()"
-
-# Ping-pong sequence: · ✻ ✽ ✶ ✳ ✢  ✳ ✶ ✽ ✻  (then back to ·)
-assert_equals "frame 0  = · (grow start)"   "🔨 Building ·" "$(animate_status "🔨 Building" 0)"
-assert_equals "frame 1  = ✻"               "🔨 Building ✻" "$(animate_status "🔨 Building" 1)"
-assert_equals "frame 2  = ✽"               "🔨 Building ✽" "$(animate_status "🔨 Building" 2)"
-assert_equals "frame 3  = ✶"               "🔨 Building ✶" "$(animate_status "🔨 Building" 3)"
-assert_equals "frame 4  = ✳"               "🔨 Building ✳" "$(animate_status "🔨 Building" 4)"
-assert_equals "frame 5  = ✢ (peak)"        "🔨 Building ✢" "$(animate_status "🔨 Building" 5)"
-assert_equals "frame 6  = ✳ (shrink)"      "🔨 Building ✳" "$(animate_status "🔨 Building" 6)"
-assert_equals "frame 7  = ✶"               "🔨 Building ✶" "$(animate_status "🔨 Building" 7)"
-assert_equals "frame 8  = ✽"               "🔨 Building ✽" "$(animate_status "🔨 Building" 8)"
-assert_equals "frame 9  = ✻"               "🔨 Building ✻" "$(animate_status "🔨 Building" 9)"
-assert_equals "frame 10 wraps to ·"        "🔨 Building ·" "$(animate_status "🔨 Building" 10)"
-assert_equals "error not animated"         "🐛 Error"       "$(animate_status "🐛 Error" 1)"
-assert_equals "passed not animated"        "✅ Tests passed" "$(animate_status "✅ Tests passed" 2)"
-assert_equals "idle not animated"          "💤 Idle"        "$(animate_status "💤 Idle" 1)"
 
 # ── Tests: set_title ──────────────────────────────────────────────────────────
 

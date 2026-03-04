@@ -43,7 +43,7 @@ claude-pane-pulse/
 │   ├── core.sh              # Shared constants, logging, dependency checks
 │   ├── title.sh             # Terminal title management
 │   ├── session.sh           # Session persistence (jq-backed)
-│   ├── monitor.sh           # Dynamic monitoring, animation, idle detection
+│   ├── monitor.sh           # Dynamic monitoring, idle detection
 │   ├── hooks.sh             # Hook setup/teardown lifecycle
 │   └── hook_runner.sh       # Hook event dispatch and status mapping
 ├── docs/                    # Documentation

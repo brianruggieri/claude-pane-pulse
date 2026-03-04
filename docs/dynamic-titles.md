@@ -168,48 +168,6 @@ Example:
 
 <!-- screenshot: Terminal pane title bar showing "✳ claude-pane-pulse (feat-cleanup) | Update docs | ✏️ Editing" -->
 
-## Animation
-
-### Spinner Sequence
-
-The spinner cycles through a **10-frame ping-pong** sequence that mirrors Claude Code's exact animation:
-
-```
-Frame:  0   1   2   3   4   5   6   7   8   9
-Char:   ·   ✻   ✽   ✶   ✳   ✢   ✳   ✶   ✽   ✻
-```
-
-- Characters: · (U+00B7), ✻ (U+273B), ✽ (U+273D), ✶ (U+2736), ✳ (U+2733), ✢ (U+2722)
-- Cycle time: ~1.5 seconds (0.15s per frame)
-- Behavior: grows from dot to peak (✢) then shrinks back — no flicker
-
-**Animated for:** all active statuses (Editing, Testing, Building, Running, Thinking, Pushing, etc.)
-
-**Static (no spinner):** completion events (Tests passed/failed, Committed, Error, Idle)
-
-### tmux Caveat
-
-On tmux, the title update requires calling `tmux rename-window` (a subprocess fork). Rapid animation would cost 7 forks/sec and hurt performance. Instead, tmux falls back to 1-second ticks (one update per monitor heartbeat). The spinner barely moves, but the title still updates reliably.
-
-## Priority System
-
-Higher-priority statuses always win. If a lower-priority status is currently shown and a higher-priority event fires, the title switches immediately.
-
-```
-🐛 Error                     = 100
-❌ Tests failed              = 90
-⏸️ Awaiting approval         = 88
-🙋 Input needed              = 85
-🔨/🧪/📦/🤖/💭/🐳           = 80, 70 (active operations)
-⬆️/⬇️/🔀                     = 75 (git operations)
-✏️ Editing                    = 65
-✅/💾/🏁 (completions)       = 60  ← always win, even over priority 80
-📖/🌐/🖥️                     = 55
-💤 Idle                       = 10 (lowest)
-```
-
-**Special rule:** Completion events (✅ Tests passed, ❌ Tests failed, 💾 Committed, 🐛 Error) bypass priority comparison and always override the current status immediately.
-
 ## Idle Detection
 
 The monitor shows `💤 Idle` when:
