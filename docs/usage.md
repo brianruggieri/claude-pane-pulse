@@ -75,7 +75,7 @@ ccp --list
 #     Started: 2026-03-01T10:00:00Z
 ```
 
-Sessions are stored in `~/.config/claude-code-pulse/sessions.json` and cleaned up automatically when ccp exits.
+Sessions are stored in `~/.config/claude-pane-pulse/sessions.json` and cleaned up automatically when ccp exits.
 
 ### Re-open a previous session
 

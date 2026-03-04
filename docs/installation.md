@@ -24,8 +24,8 @@ See [claude.ai/code](https://claude.ai/code) for installation instructions.
 ### Quick install
 
 ```bash
-git clone https://github.com/brianruggieri/claude-code-pulse.git
-cd claude-code-pulse
+git clone https://github.com/brianruggieri/claude-pane-pulse.git
+cd claude-pane-pulse
 ./install.sh
 ```
 
@@ -122,14 +122,14 @@ If you prefer not to use the installer:
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/brianruggieri/claude-code-pulse.git
+git clone https://github.com/brianruggieri/claude-pane-pulse.git
 
 # 2. Create directories
 mkdir -p ~/.local/share/ccp/bin ~/.local/share/ccp/lib ~/bin
 
 # 3. Copy files
-cp claude-code-pulse/bin/ccp ~/.local/share/ccp/bin/
-cp claude-code-pulse/lib/*.sh ~/.local/share/ccp/lib/
+cp claude-pane-pulse/bin/ccp ~/.local/share/ccp/bin/
+cp claude-pane-pulse/lib/*.sh ~/.local/share/ccp/lib/
 chmod +x ~/.local/share/ccp/bin/ccp
 
 # 4. Create symlink

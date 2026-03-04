@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/e2e/run-e2e.sh - End-to-end test for claude-code-pulse
+# tests/e2e/run-e2e.sh - End-to-end test for claude-pane-pulse
 #
 # Runs ccp with a mock claude that emits pre-recorded output, captures all
 # title changes via CCP_TITLE_LOG, then asserts the expected sequence was seen.
@@ -21,7 +21,7 @@ FAILURES=0
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  claude-code-pulse — E2E Tests"
+echo "  claude-pane-pulse — E2E Tests"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
