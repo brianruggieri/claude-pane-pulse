@@ -341,7 +341,7 @@ result=$(echo '{"prompt":"Fix the login bug in the auth module"}' \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_contains "user-prompt writes context"        "Fix the login bug"  "${result}"
 result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_equals "user-prompt clears idle (writes 💭 Thinking)" "💭 Thinking" "${result}"
+assert_empty "user-prompt does not touch status file (shows idle phrase)" "${result}"
 
 # user-prompt: no trailing newline (exactly how Claude Code sends hook payloads)
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
@@ -572,6 +572,15 @@ post_fail_count2=$(jq '.hooks.PostToolUseFailure | length' "${settings_path}" 2>
 assert_equals "second setup deduplicates PostToolUseFailure (stays at 1)" "1" "${post_fail_count2}"
 session_start_count2=$(jq '.hooks.SessionStart | length' "${settings_path}" 2>/dev/null || echo 0)
 assert_equals "second setup deduplicates SessionStart (stays at 1)" "1" "${session_start_count2}"
+
+# cross-path dedup: stale entry from a different path (e.g. source repo) is cleaned up
+mkdir -p "${HOOKS_TMP_DIR}/.claude"
+printf '%s\n' \
+    '{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"bash \"/other/path/hook_runner.sh\" user-prompt"}]}]}}' \
+    > "${settings_path}"
+setup_ccp_hooks "${HOOKS_TMP_DIR}" "${LIB_DIR}/hook_runner.sh" > /dev/null
+stale_count=$(jq '.hooks.UserPromptSubmit | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "stale path-variant entry deduped on setup (stays at 1)" "1" "${stale_count}"
 
 # teardown removes the current-PID hook entry
 teardown_ccp_hooks "${settings_path}"

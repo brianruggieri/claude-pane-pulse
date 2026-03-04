@@ -235,14 +235,6 @@ case "${mode}" in
         [[ -z "${raw_prompt}" ]] && exit 0
         _dbg "raw_prompt=${raw_prompt}"
 
-        # Clear idle immediately: write 💭 Thinking to status file so the monitor
-        # transitions out of idle the moment the user submits a new prompt.
-        # (PreToolUse will overwrite this with a more specific status when the
-        # first tool call fires.)
-        if [[ -n "${CCP_STATUS_FILE:-}" ]]; then
-            atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
-        fi
-
         # Write first-5-words placeholder immediately so the title updates at once
         initial=""
         initial=$(printf '%s' "${raw_prompt}" \

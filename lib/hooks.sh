@@ -75,7 +75,11 @@ setup_ccp_hooks() {
         --arg config_change   "${config_change_cmd}" \
         --arg worktree_create "${worktree_create_cmd}" \
         --arg worktree_remove "${worktree_remove_cmd}" '
-        def not_ccp(cmd): (.hooks // []) | map(.command == cmd) | any | not;
+        # Match any hook_runner.sh entry with the same mode argument, regardless of path.
+        # This cleans up stale entries left from the source repo, old installs, or crashes.
+        def not_ccp(cmd):
+            (cmd | gsub("^bash \"[^\"]+hook_runner\\.sh\" "; "")) as $suffix |
+            (.hooks // []) | map(.command | test("hook_runner\\.sh\" " + $suffix + "$")) | any | not;
         .hooks.PreToolUse          = [(.hooks.PreToolUse          // [])[] | select(not_ccp($pre))]       |
         .hooks.UserPromptSubmit    = [(.hooks.UserPromptSubmit    // [])[] | select(not_ccp($prompt))]    |
         .hooks.Stop                = [(.hooks.Stop                // [])[] | select(not_ccp($stop))]      |
