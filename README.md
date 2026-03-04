@@ -9,6 +9,28 @@
 
 **C**laude **C**ode **P**ane-Pulse (`ccp`) wraps the Claude Code CLI to automatically update your terminal pane titles with real-time status — building, testing, pushing, committing, and more — so you always know what each agent is working on at a glance. Perfect for split-pane terminals running multiple Claude Code sessions.
 
+### Before ccp
+
+Generic titles. You have no idea what's happening in each pane.
+
+![Before: four iTerm2 split panes showing generic "project — claude" titles with no task or status information](docs/screenshots/before.png)
+
+### With ccp
+
+Each pane title shows the project, branch, current task, and live status — independently updated as Claude works.
+
+![After: four iTerm2 split panes with ccp titles showing "project (branch) | task | status" — Editing, Testing, Building, Reading](docs/screenshots/after.png)
+
+> **iTerm2 note:** ccp writes to OSC 1 (the per-pane icon title) so every split pane gets its own independent live title. No two panes share a title bar. See [Terminal Support](#-terminal-support) for how other terminals compare.
+
+### tmux
+
+Works in tmux too. On tmux 2.9+, ccp sets per-pane titles via `select-pane -T` so each pane in a window gets its own independent title.
+
+![Before: tmux split window showing generic pane titles with no task information](docs/screenshots/tmux-before.png)
+
+![After: tmux split window with ccp showing live project, branch, task, and status per pane](docs/screenshots/tmux-after.png)
+
 ## ✨ Features
 
 - **🎬 Live Status Updates** — Building..., Testing..., Pushing... with real-time status text in the pane title
@@ -18,7 +40,7 @@
 - **💾 Session Tracking** — Resume previous sessions by title with `--goto`
 - **🎯 AI Task Summaries** — Optional: `--ai-context` summarizes your prompts to 3–5 words via claude-haiku (opt-in, uses your subscription)
 - **👋 Welcome Status** — Shows `Welcome back, <FirstName>` on startup (from git config)
-- **⚡ Zero Config** — Works out of the box on iTerm2, Terminal.app, tmux, WezTerm, Ghostty, and Kitty
+- **⚡ Tested on iTerm2, Terminal.app, and tmux** — Detection logic for WezTerm, Ghostty, and Kitty is included but unverified
 - **🚀 Full Claude Passthrough** — All Claude Code flags (`-c/--continue`, `--model`, `--worktree`, etc.) pass straight through
 
 ## 🚀 Quick Start
@@ -144,7 +166,7 @@ Pushing:    "⬆️ Pushing | Fix auth bug"
 Idle:       "💤 Idle | Fix auth bug"
 ```
 
-<!-- screenshot: title bar showing status through lifecycle -->
+![iTerm2 pane title bar showing ccp status updates across the full session lifecycle](docs/screenshots/after.png)
 
 Each status updates in real time and is cleared after the operation completes.
 
@@ -170,7 +192,7 @@ Example: `my-project (main) | Fix Auth Bug | ✏️ Editing`
 
 The **task summary** shows the first words of your prompt; with `--ai-context` enabled it becomes a 3–5 word AI-generated label. The **status** updates in real time based on hook events.
 
-<!-- screenshot: iTerm2 split pane with multiple ccp titles showing different statuses -->
+![iTerm2 split panes with ccp titles — each pane showing project (branch) | task | live status](docs/screenshots/after.png)
 
 ## 📊 Status Icons
 
@@ -236,7 +258,7 @@ Each pane's title bar updates independently. Example pane titles while working:
 ✳ Bug: Login crash | Fix login race condition | ⬆️ Pushing
 ```
 
-<!-- screenshot: iTerm2 4-pane split showing different ccp statuses -->
+![iTerm2 4-pane split with ccp — each pane showing its own live project, branch, task, and status](docs/screenshots/after.png)
 
 ## 🛠️ Configuration
 
