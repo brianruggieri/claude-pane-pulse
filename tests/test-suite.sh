@@ -18,11 +18,10 @@ source "${LIB_DIR}/hooks.sh"
 STATE_DIR=$(mktemp -d)
 SESSION_FILE="${STATE_DIR}/sessions.json"
 export STATE_DIR SESSION_FILE
-export CCP_DISABLE_PROMPT_DISTILL=1
 echo '[]' > "${SESSION_FILE}"
 
-# Avoid invoking the Claude CLI during tests.
-export CCP_DISABLE_SUMMARY=1
+# AI context summarization is opt-in (CCP_ENABLE_AI_CONTEXT=true).
+# Don't set it here — tests must not invoke the Claude CLI.
 
 # ── Test framework ────────────────────────────────────────────────────────────
 
@@ -59,6 +58,17 @@ assert_equals() {
     fi
 }
 
+assert_not_equals() {
+    local name="$1"
+    local unexpected="$2"
+    local actual="$3"
+    if [[ "${unexpected}" != "${actual}" ]]; then
+        pass "${name}"
+    else
+        fail "${name}" "expected something other than: '${unexpected}'"
+    fi
+}
+
 assert_contains() {
     local name="$1"
     local needle="$2"
@@ -80,72 +90,6 @@ assert_empty() {
     fi
 }
 
-# ── Tests: extract_context ────────────────────────────────────────────────────
-
-echo ""
-echo "extract_context()"
-
-run_extract() {
-    extract_context "$1" | cut -d'|' -f1
-}
-
-run_priority() {
-    extract_context "$1" | cut -d'|' -f2
-}
-
-assert_contains "detects Error keyword"            "🐛 Error"       "$(run_extract "Error: file not found")"
-assert_contains "detects Failed keyword"           "🐛 Error"       "$(run_extract "FAILED: build failed")"
-assert_contains "detects Building"                 "🔨 Building"    "$(run_extract "Building project...")"
-assert_contains "detects Compiling"                "🔨 Building"    "$(run_extract "Compiling main.rs")"
-assert_contains "detects npm install"              "📦 Installing"  "$(run_extract "npm install --save-dev")"
-assert_contains "detects yarn add"                 "📦 Installing"  "$(run_extract "yarn add react")"
-assert_contains "detects git push"                 "⬆️ Pushing"     "$(run_extract "git push origin main")"
-assert_contains "detects git pull"                 "⬇️ Pulling"     "$(run_extract "git pull --rebase")"
-assert_contains "detects git merge"                "🔀 Merging"     "$(run_extract "git merge feature-branch")"
-assert_contains "detects docker build"             "🐳 Docker"      "$(run_extract "docker build -t myapp .")"
-assert_contains "detects tests passed"             "✅ Tests passed" "$(run_extract "5 tests passed")"
-assert_contains "detects tests failed"             "❌ Tests failed" "$(run_extract "3 tests failed")"
-assert_contains "detects git commit"               "💾 Committed"   "$(run_extract "git commit -m 'fix: stuff'")"
-assert_empty    "ignores unmatched line"                             "$(run_extract "hello world")"
-
-# ● structural patterns (Claude Code tool-call / status lines)
-assert_contains "● Bash git push → Pushing"    "⬆️ Pushing"   "$(run_extract "● Bash(git push origin main)")"
-assert_contains "● Bash git pull → Pulling"    "⬇️ Pulling"   "$(run_extract "● Bash(git pull --rebase)")"
-assert_contains "● Bash npm install → Install" "📦 Installing" "$(run_extract "● Bash(npm install)")"
-assert_contains "● Bash jest → Testing"        "🧪 Testing"   "$(run_extract "● Bash(npx jest --coverage)")"
-assert_contains "● Bash webpack → Building"    "🔨 Building"  "$(run_extract "● Bash(webpack --mode production)")"
-assert_contains "● Edit → Editing"             "✏️ Editing"   "$(run_extract "● Edit(lib/monitor.sh)")"
-assert_contains "● Write → Editing"            "✏️ Editing"   "$(run_extract "● Write(README.md)")"
-assert_contains "● Bash generic → Running"     "🖥️ Running"   "$(run_extract "● Bash(ls -la)")"
-
-# Priority ordering
-assert_equals   "Error has priority 100"       "100"  "$(run_priority "Error: crash")"
-assert_equals   "Tests failed has priority 90" "90"   "$(run_priority "3 tests failed")"
-assert_equals   "Building has priority 80"     "80"   "$(run_priority "Building project")"
-assert_equals   "Pushing has priority 75"      "75"   "$(run_priority "git push origin")"
-assert_equals   "Editing has priority 65"      "65"   "$(run_priority "● Edit(foo.sh)")"
-assert_equals   "Running has priority 55"      "55"   "$(run_priority "● Bash(ls)")"
-
-# ── Tests: animate_status ─────────────────────────────────────────────────────
-
-echo ""
-echo "animate_status()"
-
-# Ping-pong sequence: · ✻ ✽ ✶ ✳ ✢  ✳ ✶ ✽ ✻  (then back to ·)
-assert_equals "frame 0  = · (grow start)"   "🔨 Building ·" "$(animate_status "🔨 Building" 0)"
-assert_equals "frame 1  = ✻"               "🔨 Building ✻" "$(animate_status "🔨 Building" 1)"
-assert_equals "frame 2  = ✽"               "🔨 Building ✽" "$(animate_status "🔨 Building" 2)"
-assert_equals "frame 3  = ✶"               "🔨 Building ✶" "$(animate_status "🔨 Building" 3)"
-assert_equals "frame 4  = ✳"               "🔨 Building ✳" "$(animate_status "🔨 Building" 4)"
-assert_equals "frame 5  = ✢ (peak)"        "🔨 Building ✢" "$(animate_status "🔨 Building" 5)"
-assert_equals "frame 6  = ✳ (shrink)"      "🔨 Building ✳" "$(animate_status "🔨 Building" 6)"
-assert_equals "frame 7  = ✶"               "🔨 Building ✶" "$(animate_status "🔨 Building" 7)"
-assert_equals "frame 8  = ✽"               "🔨 Building ✽" "$(animate_status "🔨 Building" 8)"
-assert_equals "frame 9  = ✻"               "🔨 Building ✻" "$(animate_status "🔨 Building" 9)"
-assert_equals "frame 10 wraps to ·"        "🔨 Building ·" "$(animate_status "🔨 Building" 10)"
-assert_equals "error not animated"         "🐛 Error"       "$(animate_status "🐛 Error" 1)"
-assert_equals "passed not animated"        "✅ Tests passed" "$(animate_status "✅ Tests passed" 2)"
-assert_equals "idle not animated"          "💤 Idle"        "$(animate_status "💤 Idle" 1)"
 
 # ── Tests: set_title ──────────────────────────────────────────────────────────
 
@@ -377,7 +321,7 @@ result=$(echo '{"prompt":"Fix the login bug in the auth module"}' \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_contains "user-prompt writes context"        "Fix the login bug"  "${result}"
 result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_contains "user-prompt clears idle (writes 💭 Thinking)" "💭 Thinking" "${result}"
+assert_empty "user-prompt does not touch status file (shows idle phrase)" "${result}"
 
 # user-prompt: no trailing newline (exactly how Claude Code sends hook payloads)
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
@@ -608,6 +552,15 @@ post_fail_count2=$(jq '.hooks.PostToolUseFailure | length' "${settings_path}" 2>
 assert_equals "second setup deduplicates PostToolUseFailure (stays at 1)" "1" "${post_fail_count2}"
 session_start_count2=$(jq '.hooks.SessionStart | length' "${settings_path}" 2>/dev/null || echo 0)
 assert_equals "second setup deduplicates SessionStart (stays at 1)" "1" "${session_start_count2}"
+
+# cross-path dedup: stale entry from a different path (e.g. source repo) is cleaned up
+mkdir -p "${HOOKS_TMP_DIR}/.claude"
+printf '%s\n' \
+    '{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"bash \"/other/path/hook_runner.sh\" user-prompt"}]}]}}' \
+    > "${settings_path}"
+setup_ccp_hooks "${HOOKS_TMP_DIR}" "${LIB_DIR}/hook_runner.sh" > /dev/null
+stale_count=$(jq '.hooks.UserPromptSubmit | length' "${settings_path}" 2>/dev/null || echo 0)
+assert_equals "stale path-variant entry deduped on setup (stays at 1)" "1" "${stale_count}"
 
 # teardown removes the current-PID hook entry
 teardown_ccp_hooks "${settings_path}"

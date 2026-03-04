@@ -235,12 +235,11 @@ case "${mode}" in
         [[ -z "${raw_prompt}" ]] && exit 0
         _dbg "raw_prompt=${raw_prompt}"
 
-        # Clear idle immediately: write 💭 Thinking to status file so the monitor
-        # transitions out of idle the moment the user submits a new prompt.
-        # (PreToolUse will overwrite this with a more specific status when the
-        # first tool call fires.)
+        # Clear any stale status (e.g. the startup "Welcome back" message) so
+        # the monitor shows idle phrases until a tool-specific status is emitted.
         if [[ -n "${CCP_STATUS_FILE:-}" ]]; then
-            atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
+            : > "${CCP_STATUS_FILE}" 2>/dev/null || true
+            _dbg "cleared status file on user-prompt"
         fi
 
         # Write first-5-words placeholder immediately so the title updates at once
@@ -249,9 +248,11 @@ case "${mode}" in
             | awk '{n=(NF<5?NF:5); for(i=1;i<=n;i++) printf "%s%s",$i,(i<n?" ":""); print ""}')
         [[ -n "${initial}" ]] && atomic_write "${CCP_CONTEXT_FILE}" "${initial}"
 
-        # Test hook: skip AI distillation when explicitly disabled.
-        if [[ "${CCP_DISABLE_PROMPT_DISTILL:-}" == "1" || -n "${CCP_DISABLE_SUMMARY:-}" ]]; then
-            _dbg "distillation disabled via CCP_DISABLE_PROMPT_DISTILL/CCP_DISABLE_SUMMARY"
+        # AI context summarization is opt-in (--ai-context flag / CCP_ENABLE_AI_CONTEXT=true).
+        # It sends your prompt text to claude-haiku and counts against your subscription.
+        # Skip unless explicitly enabled.
+        if [[ "${CCP_ENABLE_AI_CONTEXT:-false}" != "true" ]]; then
+            _dbg "AI context summarization not enabled (use --ai-context to enable)"
             exit 0
         fi
 
@@ -363,77 +364,6 @@ case "${mode}" in
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
         ;;
 
-    permission-request)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "PermissionRequest" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    notification)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "Notification" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    task-completed)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "TaskCompleted" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    session-start)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "SessionStart" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    session-end)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "SessionEnd" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    pre-compact)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "PreCompact" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    subagent-start)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "SubagentStart" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    subagent-stop)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "SubagentStop" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    teammate-idle)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "TeammateIdle" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    config-change)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "ConfigChange" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    worktree-create)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "WorktreeCreate" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
-
-    worktree-remove)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
-        status=$(event_status_from_payload "WorktreeRemove" "${json_input}")
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
-        ;;
 esac
 
 exit 0

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Claude flag passthrough: `ccp` now forwards any Claude flag directly to the `claude` CLI.
+  Common flags supported: `-c/--continue`, `-r/--resume [ID]`, `--model`, `--permission-mode`,
+  `--effort`, `--dangerously-skip-permissions`, `--worktree`, `--from-pr`, `--add-dir`,
+  `--allowedTools`, `--disallowedTools`, `--mcp-config`, `--ide`, `--debug`, `--verbose`.
+  Unknown `-*` flags are also forwarded. Use `--` for explicit passthrough.
+- Welcome status: on startup, the title bar shows `👋 Welcome back, <FirstName>` (from
+  `git config user.name`, fallback `$USER`) until the first user prompt fires.
+- `--goto TITLE` flag: resume a previous `ccp` session by jumping to its saved working directory.
+  (Renamed from `--continue` to avoid conflict with Claude's own `-c/--continue`.)
+
+### Changed
+- `--continue TITLE` renamed to `--goto TITLE` (session directory restore).
+- `extract_context()` removed from `lib/monitor.sh` — status detection now handled entirely
+  by `hook_runner.sh` via structured Claude Code hook events.
+- 12 legacy kebab-case mode aliases removed from `hook_runner.sh` (never invoked in production;
+  all events route via `event <EventName>`).
+
 ## [1.0.0] - 2026-03-01
 
 ### Added

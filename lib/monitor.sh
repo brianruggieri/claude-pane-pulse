@@ -62,139 +62,6 @@ status_to_priority() {
     fi
 }
 
-# ── extract_context ───────────────────────────────────────────────────────────
-# Legacy: retained for test compatibility. Not called in production.
-# Parse a stripped line of output and return "status|priority".
-# Empty status means no match — caller keeps the previous context.
-#
-# Pattern philosophy:
-#   • Error/failure patterns anchor to word boundaries to avoid false positives.
-#   • Build/test/install patterns match both raw command output AND Claude Code's
-#     "● Bash(command...)" tool-call headers, so they fire the moment Claude
-#     decides to run a command rather than only after the command prints output.
-#   • Thinking is detected structurally: any "● <word>..." line means Claude is
-#     processing, regardless of the specific phrase Claude uses ("Dilly-dallying",
-#     "Thinking", "Pondering", or any future variant).
-#   • File-editing is detected from "● Edit(" / "● Write(" tool-call headers.
-#   • A generic "● Bash(" catch-all covers any shell command not matched above.
-extract_context() {
-    local line="$1"
-    local context=""
-    local priority=0
-
-    # ── Error states (highest priority) ──────────────────────────────────────
-    # Anchor to line start / word boundaries to reduce false positives on
-    # build output that legitimately prints error messages mid-stream.
-    if [[ "${line}" =~ ^(Error|error):[[:space:]] || \
-          "${line}" =~ ^(Exception|Traceback) || \
-          "${line}" =~ ^FAILED || \
-          "${line}" =~ [[:space:]]FAILED ]]; then
-        context="🐛 Error"
-        priority=100
-
-    # ── Test failures ─────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+(failed|failing) ]]; then
-        context="❌ Tests failed"
-        priority=90
-
-    # ── Active builds ─────────────────────────────────────────────────────────
-    # Matches: raw output keywords OR ● Bash( lines containing build commands.
-    elif [[ "${line}" =~ (Building|Compiling|Bundling) || \
-            "${line}" =~ ●[[:space:]]*Bash\(.*(build|compile|bundle|webpack|rollup|esbuild|tsc[[:space:]]|vite[[:space:]]build|cargo[[:space:]]build|make[[:space:]]|cmake|gradle|mvn[[:space:]]package) ]]; then
-        context="🔨 Building"
-        priority=80
-
-    # ── Active tests ──────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ (npm|yarn|pnpm)[[:space:]].*test || \
-            "${line}" =~ ●[[:space:]]*Bash\(.*(jest|vitest|pytest|mocha|rspec|go[[:space:]]test|cargo[[:space:]]test|phpunit|bun[[:space:]]test) ]]; then
-        context="🧪 Testing"
-        priority=80
-
-    # ── Package installs ──────────────────────────────────────────────────────
-    elif [[ "${line}" =~ (npm|yarn)[[:space:]]+(install|add|ci) || \
-            "${line}" =~ ●[[:space:]]*Bash\(.*(npm|yarn|pnpm|bun)[[:space:]]+(install|add|ci|i[[:space:]]) || \
-            "${line}" =~ ●[[:space:]]*Bash\(pip[[:space:]]+(install|download) || \
-            "${line}" =~ ●[[:space:]]*Bash\(cargo[[:space:]]add ]]; then
-        context="📦 Installing"
-        priority=80
-
-    # ── Git: push / pull / merge ──────────────────────────────────────────────
-    # These match both raw "git push" output AND "● Bash(git push ...)" headers.
-    elif [[ "${line}" =~ git[[:space:]]+push ]]; then
-        context="⬆️ Pushing"
-        priority=75
-    elif [[ "${line}" =~ git[[:space:]]+pull ]]; then
-        context="⬇️ Pulling"
-        priority=75
-    elif [[ "${line}" =~ git[[:space:]]+merge ]]; then
-        context="🔀 Merging"
-        priority=75
-
-    # ── Docker ────────────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ docker[[:space:]]+(build|run|push|compose) ]]; then
-        context="🐳 Docker"
-        priority=70
-
-    # ── File editing ──────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ ●[[:space:]]*(Edit|Write|MultiEdit|NotebookEdit)\( ]]; then
-        context="✏️ Editing"
-        priority=65
-
-    # ── Test success ──────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+passed ]]; then
-        context="✅ Tests passed"
-        priority=60
-
-    # ── Git commit completion ─────────────────────────────────────────────────
-    elif [[ "${line}" =~ git[[:space:]]+commit ]]; then
-        context="💾 Committed"
-        priority=60
-
-    # ── Generic shell command (catch-all for unrecognised ● Bash lines) ───────
-    elif [[ "${line}" =~ ●[[:space:]]*Bash\( ]]; then
-        context="🖥️ Running"
-        priority=55
-
-    fi
-
-    echo "${context}|${priority}"
-}
-
-# animate_status: append a cycling spinner to active in-progress statuses.
-# Legacy: retained for test compatibility. Inlined in title_updater.
-# Uses Claude Code's exact spinner characters in their correct ping-pong order.
-# Source: reverse-engineered from raw terminal output; the original expression
-# array is ["·","✻","✽","✶","✳","✢"] driven by a triangle-wave oscillator,
-# producing a grow→shrink pulse rather than a one-way sweep.
-#
-# 10-frame ping-pong at ~0.15s/frame = 1.5s full cycle:
-#   · ✻ ✽ ✶ ✳ ✢  ✳ ✶ ✽ ✻  (then back to ·)
-#   0 1 2 3 4 5  6 7 8 9
-animate_status() {
-    local status="$1"
-    local frame="$2"
-
-    # Only animate operations still in progress (not completions or errors)
-    if [[ "${status}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${status}" =~ "✸" ]]; then
-        local spinner=""
-        case $((frame % 10)) in
-            0) spinner="·" ;;   # U+00B7 MIDDLE DOT          — grow start
-            1) spinner="✻" ;;   # U+273B TEARDROP-SPOKED ASTERISK
-            2) spinner="✽" ;;   # U+273D HEAVY TEARDROP-SPOKED ASTERISK
-            3) spinner="✶" ;;   # U+2736 SIX POINTED BLACK STAR
-            4) spinner="✳" ;;   # U+2733 EIGHT-SPOKED ASTERISK
-            5) spinner="✢" ;;   # U+2722 FOUR TEARDROP-SPOKED ASTERISK — peak
-            6) spinner="✳" ;;   # U+2733                     — shrink
-            7) spinner="✶" ;;   # U+2736
-            8) spinner="✽" ;;   # U+273D
-            9) spinner="✻" ;;   # U+273B
-        esac
-        echo "${status} ${spinner}"
-    else
-        echo "${status}"
-    fi
-}
-
 title_updater() {
     local base_title="$1"
 
@@ -203,7 +70,6 @@ title_updater() {
         set +e
 
         local current_context=""
-        local frame_counter=0
         local task_summary=""
         local clean_summary=""
         local prev_display_context=""
@@ -211,10 +77,21 @@ title_updater() {
         local status_file="${CCP_STATUS_FILE:-}"
         local context_file="${CCP_CONTEXT_FILE:-}"
 
-        local tick_interval="1"
-        if [[ "${BASH_VERSINFO[0]:-3}" -ge 4 && -z "${TMUX:-}" ]]; then
-            tick_interval="0.15"
-        fi
+        # Idle phrase cycling — advances to next phrase each time Claude goes idle
+        local _idle_idx=0
+        local _prev_active=false
+        local _idle_phrases=(
+            "💤 Idle"
+            "☕ Recharging"
+            "🧘 Centering"
+            "🎯 Ready"
+            "🫡 Standing by"
+            "💡 Listening"
+            "🌿 At rest"
+            "👀 Watching"
+            "🌊 Drifting"
+            "✨ Floating"
+        )
 
         local title_prefix
         title_prefix=$(format_title_prefix "${CCP_PROJECT_NAME:-}" "${CCP_BRANCH_NAME:-}")
@@ -223,9 +100,7 @@ title_updater() {
         update_title_with_context "${base_title}" ""
 
         while true; do
-            sleep "${tick_interval}" || break
-
-            [[ -n "${current_context}" ]] && frame_counter=$(( (frame_counter + 1) % 10 ))
+            sleep 1 || break
 
             local current_time=$SECONDS
             if [[ $((current_time - last_hook_check)) -ge 1 ]]; then
@@ -240,8 +115,14 @@ title_updater() {
                     if [[ "${hook_status}" != "${current_context}" ]]; then
                         current_context="${hook_status}"
                     fi
+                    _prev_active=true
                 else
-                    current_context="💤 Idle"
+                    # Advance to next idle phrase on each transition from active → idle
+                    if [[ "${_prev_active}" = true ]]; then
+                        _idle_idx=$(( (_idle_idx + 1) % ${#_idle_phrases[@]} ))
+                        _prev_active=false
+                    fi
+                    current_context="${_idle_phrases[${_idle_idx}]}"
                 fi
 
                 local new_summary=""
@@ -259,23 +140,6 @@ title_updater() {
                             | sed 's/[[:space:]]*$//')
                     fi
                 fi
-            fi
-
-            # Inline animation — no $() fork.
-            local _spinner=""
-            if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${current_context}" =~ "✸" ]]; then
-                case $((frame_counter % 10)) in
-                    0) _spinner="·"  ;;
-                    1) _spinner="✻"  ;;
-                    2) _spinner="✽"  ;;
-                    3) _spinner="✶"  ;;
-                    4) _spinner="✳"  ;;
-                    5) _spinner="✢"  ;;
-                    6) _spinner="✳"  ;;
-                    7) _spinner="✶"  ;;
-                    8) _spinner="✽"  ;;
-                    9) _spinner="✻"  ;;
-                esac
             fi
 
             local display_content=""
@@ -296,12 +160,7 @@ title_updater() {
                 _body="${display_content}"
             fi
 
-            local display_context=""
-            if [[ -n "${_spinner}" && -n "${_body}" ]]; then
-                display_context="${_spinner} ${_body}"
-            else
-                display_context="${_body}"
-            fi
+            local display_context="${_body}"
 
             if [[ "${display_context}" != "${prev_display_context}" ]]; then
                 update_title_with_context "${base_title}" "${display_context}"
@@ -326,7 +185,5 @@ cleanup_monitor() {
 }
 
 export -f status_to_priority
-export -f extract_context
-export -f animate_status
 export -f title_updater
 export -f cleanup_monitor
