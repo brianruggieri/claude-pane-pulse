@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+# examples/gif-demo.sh
+#
+# Creates an animated GIF showing ccp pane title updates cycling through
+# a realistic sequence of statuses. The terminal content is a plain shell
+# prompt — the demo is entirely in the title bar.
+#
+# Output: docs/screenshots/demo.gif
+#
+# Requirements:
+#   - iTerm2 with AppleScript access
+#   - ImageMagick: brew install imagemagick
+#   - Optional: gifsicle (brew install gifsicle) for optimization
+#
+# Usage:
+#   bash examples/gif-demo.sh
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SHOTS_DIR="${REPO_DIR}/docs/screenshots"
+FRAMES_DIR="${SHOTS_DIR}/gif-frames"
+
+# ── colors ────────────────────────────────────────────────────────────────────
+
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+info()    { printf "  ${GREEN}→${NC}  %s\n" "$*"; }
+warn()    { printf "  ${YELLOW}!${NC}  %s\n" "$*"; }
+heading() { printf "\n${BOLD}%s${NC}\n\n" "$*"; }
+die()     { printf "${RED}ERROR:${NC} %s\n" "$*" >&2; exit 1; }
+
+# ── preflight ─────────────────────────────────────────────────────────────────
+
+osascript -e 'tell application "iTerm2" to return "ok"' &>/dev/null \
+    || die "Cannot reach iTerm2 via AppleScript. Make sure iTerm2 is running."
+
+command -v convert &>/dev/null \
+    || die "ImageMagick not found. Install with: brew install imagemagick"
+
+mkdir -p "${SHOTS_DIR}" "${FRAMES_DIR}"
+rm -f "${FRAMES_DIR}"/frame_*.png
+
+# ── title sequence ────────────────────────────────────────────────────────────
+#
+# Each entry: "HOLD_SECONDS|PANE_TITLE"
+# Simulates a realistic ccp session lifecycle for auth-service/feat/oauth2.
+
+FRAMES=(
+    "2.5|auth-service — claude"
+    "2.0|✳ auth-service (feat/oauth2) | Fix JWT expiry check | 💭 Thinking"
+    "2.5|✳ auth-service (feat/oauth2) | Fix JWT expiry check | 📖 Reading"
+    "2.5|✳ auth-service (feat/oauth2) | Fix JWT expiry check | ✏️ Editing"
+    "2.0|✳ auth-service (feat/oauth2) | Fix JWT expiry check | 🧪 Testing"
+    "2.5|✳ auth-service (feat/oauth2) | Fix JWT expiry check | ✅ Tests passed"
+    "2.0|✳ auth-service (feat/oauth2) | Fix JWT expiry check | 💾 Committed"
+    "2.0|auth-service (feat/oauth2) | 🫡 Standing by"
+)
+
+# Delay values for ImageMagick (hundredths of a second)
+# Derived from HOLD_SECONDS × 100
+declare -a IM_DELAYS=()
+
+# ── AppleScript helpers ───────────────────────────────────────────────────────
+
+iterm_create_window() {
+    osascript << 'AS'
+tell application "iTerm2"
+    set w to (create window with default profile)
+    return id of w
+end tell
+AS
+}
+
+iterm_send() {
+    local win_id="$1" cmd="$2"
+    local esc="${cmd//\\/\\\\}"
+    esc="${esc//\"/\\\"}"
+    osascript << AS 2>/dev/null
+tell application "iTerm2"
+    tell current session of current tab of (first window whose id is ${win_id})
+        write text "${esc}"
+    end tell
+end tell
+AS
+}
+
+iterm_set_title() {
+    local win_id="$1" title="$2"
+    local esc="${title//\\/\\\\}"
+    esc="${esc//\"/\\\"}"
+    osascript << AS 2>/dev/null
+tell application "iTerm2"
+    tell current session of current tab of (first window whose id is ${win_id})
+        set name to "${esc}"
+    end tell
+end tell
+AS
+}
+
+iterm_resize() {
+    local win_id="$1"
+    # Fixed 900×560 window — shows tab bar + a few rows of terminal clearly
+    local screen_w screen_h wx wy ww wh
+    screen_w=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null \
+        | awk -F'[, ]+' '{print $3}') || screen_w=1440
+    screen_h=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null \
+        | awk -F'[, ]+' '{print $4}') || screen_h=900
+    ww=960; wh=480
+    wx=$(( (screen_w - ww) / 2 ))
+    wy=$(( (screen_h - wh) / 3 ))
+    osascript << AS 2>/dev/null || true
+tell application "iTerm2"
+    set bounds of (first window whose id is ${win_id}) to {${wx}, ${wy}, $((wx + ww)), $((wy + wh))}
+end tell
+AS
+    sleep 0.5
+}
+
+iterm_focus() {
+    local win_id="$1"
+    osascript << AS 2>/dev/null || true
+tell application "iTerm2"
+    activate
+    select (first window whose id is ${win_id})
+end tell
+AS
+}
+
+iterm_close() {
+    local win_id="$1"
+    osascript << AS 2>/dev/null || true
+tell application "iTerm2"
+    close (first window whose id is ${win_id})
+end tell
+AS
+}
+
+get_cg_window_id() {
+    python3 - << 'PY' 2>/dev/null
+import Quartz
+wins = Quartz.CGWindowListCopyWindowInfo(
+    Quartz.kCGWindowListOptionOnScreenOnly,
+    Quartz.kCGNullWindowID
+)
+for w in wins:
+    if (w.get("kCGWindowOwnerName") == "iTerm2"
+            and w.get("kCGWindowLayer", 1) == 0
+            and w.get("kCGWindowAlpha", 0.0) > 0):
+        print(w["kCGWindowNumber"])
+        break
+PY
+}
+
+capture_frame() {
+    local cg_id="$1" outfile="$2"
+    if [[ -n "${cg_id}" ]]; then
+        screencapture -l "${cg_id}" -x "${outfile}"
+    else
+        screencapture -x "${outfile}"
+    fi
+}
+
+# ── main ──────────────────────────────────────────────────────────────────────
+
+heading "Creating iTerm2 window"
+
+WIN=$(iterm_create_window)
+info "Window ID: ${WIN}"
+
+iterm_resize "${WIN}"
+iterm_focus "${WIN}"
+sleep 0.3
+
+CG=$(get_cg_window_id) || CG=""
+info "CGWindowID: ${CG:-none (will use full-screen fallback)}"
+
+# Start a plain prompt loop — terminal content stays minimal/clean
+iterm_send "${WIN}" "export DISABLE_AUTO_TITLE=true; export PS1='\\$ '; clear"
+sleep 0.8
+
+heading "Capturing frames"
+
+frame_n=0
+for entry in "${FRAMES[@]}"; do
+    hold="${entry%%|*}"
+    title="${entry#*|}"
+    frame_n=$(( frame_n + 1 ))
+    padded=$(printf "%03d" "${frame_n}")
+
+    info "Frame ${padded}: ${title}"
+    iterm_set_title "${WIN}" "${title}"
+    sleep 0.4    # let AppleScript + iTerm2 render the title
+
+    outfile="${FRAMES_DIR}/frame_${padded}.png"
+    capture_frame "${CG}" "${outfile}"
+
+    # Record delay in ImageMagick hundredths-of-a-second units
+    delay_cs=$(python3 -c "print(int(float('${hold}') * 100))")
+    IM_DELAYS+=("${delay_cs}")
+
+    # Hold for the remainder of the frame duration (already took ~0.4s above)
+    remaining=$(python3 -c "import time; r=float('${hold}')-0.4; print(max(r,0))")
+    [[ "${remaining}" != "0" ]] && sleep "${remaining}"
+done
+
+info "Captured ${frame_n} frames"
+
+heading "Closing window"
+iterm_close "${WIN}"
+sleep 0.3
+
+# ── assemble GIF ──────────────────────────────────────────────────────────────
+
+heading "Assembling GIF"
+
+OUT="${SHOTS_DIR}/demo.gif"
+
+# Build ImageMagick argument list: -delay <cs> frame.png pairs
+im_args=()
+for i in "${!IM_DELAYS[@]}"; do
+    frame_n=$(( i + 1 ))
+    padded=$(printf "%03d" "${frame_n}")
+    im_args+=( -delay "${IM_DELAYS[$i]}" "${FRAMES_DIR}/frame_${padded}.png" )
+done
+
+convert "${im_args[@]}" \
+    -loop 0 \
+    -layers Optimize \
+    -resize "800x>" \
+    "${OUT}"
+
+info "GIF assembled: ${OUT}"
+
+# Optimize with gifsicle if available
+if command -v gifsicle &>/dev/null; then
+    info "Optimizing with gifsicle..."
+    gifsicle --optimize=3 --batch "${OUT}"
+    info "Optimized: $(du -sh "${OUT}" | awk '{print $1}')"
+fi
+
+# ── summary ───────────────────────────────────────────────────────────────────
+
+heading "Done"
+printf "  Output: ${BOLD}%s${NC}\n" "${OUT}"
+printf "  Size:   %s\n\n" "$(du -sh "${OUT}" | awk '{print $1}')"
+printf "  To embed in README:\n"
+printf "  ${DIM}![ccp demo](docs/screenshots/demo.gif)${NC}\n\n"
+printf "  To re-run:\n"
+printf "  ${DIM}bash examples/gif-demo.sh${NC}\n\n"

@@ -125,9 +125,15 @@ case "${SCENARIO}" in
         TASK="Plan Terraform upgrade"
         STATUS_LABEL="📖 Reading"
         ;;
+    complete)
+        PROJECT="auth-service"
+        BRANCH="feat/oauth2"
+        TASK="Fix JWT expiry check"
+        STATUS_LABEL="✅ Tests passed"
+        ;;
     *)
         echo "Unknown scenario: ${SCENARIO}" >&2
-        echo "Valid: editing testing building thinking" >&2
+        echo "Valid: editing testing building thinking complete" >&2
         exit 1
         ;;
 esac
@@ -273,11 +279,35 @@ render_thinking() {
     printf "  ${DIM}❯${R} \n"
 }
 
+render_complete() {
+    blank
+    printf "  ${DIM}❯ run the full auth test suite${R}\n"
+    blank
+    printf "  ${BULLET} ${BOLD}Bash(npm test -- --testPathPattern=auth)${R}\n"
+    blank
+    printf "  ${DIM}  > auth-service@3.1.0 test${R}\n"
+    printf "  ${DIM}  > jest --testPathPattern=auth${R}\n"
+    blank
+    printf "  ${DGRN}  PASS  src/auth/__tests__/middleware.test.ts${R}\n"
+    printf "  ${DGRN}  PASS  src/auth/__tests__/jwt.test.ts${R}\n"
+    printf "  ${DGRN}  PASS  src/auth/__tests__/refresh.test.ts${R}\n"
+    blank
+    printf "  ${DGRN}  Test Suites: 3 passed, 3 total${R}\n"
+    printf "  ${DGRN}  Tests:       18 passed, 18 total${R}\n"
+    printf "  ${DIM}  Time:        1.843s${R}\n"
+    blank
+    printf "  All auth tests pass. The ${CYN}exp${R} claim fix is working correctly —\n"
+    printf "  expired tokens are now rejected as expected.\n"
+    blank
+    printf "  ${DIM}❯${R} \n"
+}
+
 case "${SCENARIO}" in
     editing)  render_editing  ;;
     testing)  render_testing  ;;
     building) render_building ;;
     thinking) render_thinking ;;
+    complete) render_complete ;;
 esac
 
 # ── hold for screenshot ────────────────────────────────────────────────────────
