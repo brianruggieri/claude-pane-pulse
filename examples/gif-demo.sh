@@ -54,12 +54,12 @@ rm -f "${FRAMES_DIR}"/frame_*.png
 
 FRAMES=(
     "2.5|auth-service — claude"
-    "2.0|· auth-service (feat/oauth2) | Fix JWT expiry check | 💭 Thinking"
-    "2.5|✻ auth-service (feat/oauth2) | Fix JWT expiry check | 📖 Reading"
-    "2.5|✽ auth-service (feat/oauth2) | Fix JWT expiry check | ✏️ Editing"
-    "2.0|✶ auth-service (feat/oauth2) | Fix JWT expiry check | 🧪 Testing"
-    "2.5|✳ auth-service (feat/oauth2) | Fix JWT expiry check | ✅ Tests passed"
-    "2.0|✢ auth-service (feat/oauth2) | Fix JWT expiry check | 💾 Committed"
+    "2.0|auth-service (feat/oauth2) | Fix JWT expiry check | 💭 Thinking"
+    "2.5|auth-service (feat/oauth2) | Fix JWT expiry check | 📖 Reading"
+    "2.5|auth-service (feat/oauth2) | Fix JWT expiry check | ✏️ Editing"
+    "2.0|auth-service (feat/oauth2) | Fix JWT expiry check | 🧪 Testing"
+    "2.5|auth-service (feat/oauth2) | Fix JWT expiry check | ✅ Tests passed"
+    "2.0|auth-service (feat/oauth2) | Fix JWT expiry check | 💾 Committed"
     "2.0|auth-service (feat/oauth2) | 🫡 Standing by"
 )
 
