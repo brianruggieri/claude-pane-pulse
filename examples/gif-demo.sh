@@ -25,6 +25,7 @@ FRAMES_DIR="${SHOTS_DIR}/gif-frames"
 # ── colors ────────────────────────────────────────────────────────────────────
 
 BOLD='\033[1m'
+DIM='\033[2m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -40,8 +41,8 @@ die()     { printf "${RED}ERROR:${NC} %s\n" "$*" >&2; exit 1; }
 osascript -e 'tell application "iTerm2" to return "ok"' &>/dev/null \
     || die "Cannot reach iTerm2 via AppleScript. Make sure iTerm2 is running."
 
-command -v convert &>/dev/null \
-    || die "ImageMagick not found. Install with: brew install imagemagick"
+command -v magick &>/dev/null \
+    || die "ImageMagick not found. Install with: brew install imagemagick (provides magick command)"
 
 mkdir -p "${SHOTS_DIR}" "${FRAMES_DIR}"
 rm -f "${FRAMES_DIR}"/frame_*.png
@@ -53,12 +54,12 @@ rm -f "${FRAMES_DIR}"/frame_*.png
 
 FRAMES=(
     "2.5|auth-service — claude"
-    "2.0|✳ auth-service (feat/oauth2) | Fix JWT expiry check | 💭 Thinking"
-    "2.5|✳ auth-service (feat/oauth2) | Fix JWT expiry check | 📖 Reading"
-    "2.5|✳ auth-service (feat/oauth2) | Fix JWT expiry check | ✏️ Editing"
-    "2.0|✳ auth-service (feat/oauth2) | Fix JWT expiry check | 🧪 Testing"
+    "2.0|· auth-service (feat/oauth2) | Fix JWT expiry check | 💭 Thinking"
+    "2.5|✻ auth-service (feat/oauth2) | Fix JWT expiry check | 📖 Reading"
+    "2.5|✽ auth-service (feat/oauth2) | Fix JWT expiry check | ✏️ Editing"
+    "2.0|✶ auth-service (feat/oauth2) | Fix JWT expiry check | 🧪 Testing"
     "2.5|✳ auth-service (feat/oauth2) | Fix JWT expiry check | ✅ Tests passed"
-    "2.0|✳ auth-service (feat/oauth2) | Fix JWT expiry check | 💾 Committed"
+    "2.0|✢ auth-service (feat/oauth2) | Fix JWT expiry check | 💾 Committed"
     "2.0|auth-service (feat/oauth2) | 🫡 Standing by"
 )
 
@@ -90,28 +91,17 @@ end tell
 AS
 }
 
-iterm_set_title() {
-    local win_id="$1" title="$2"
-    local esc="${title//\\/\\\\}"
-    esc="${esc//\"/\\\"}"
-    osascript << AS 2>/dev/null
-tell application "iTerm2"
-    tell current session of current tab of (first window whose id is ${win_id})
-        set name to "${esc}"
-    end tell
-end tell
-AS
-}
 
 iterm_resize() {
     local win_id="$1"
-    # Fixed 900×560 window — shows tab bar + a few rows of terminal clearly
+    # Wide, short window — tab bar is prominent, minimal terminal content visible.
+    # 960×140 pt gives the macOS chrome + iTerm2 tab bar + ~2 terminal lines.
     local screen_w screen_h wx wy ww wh
     screen_w=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null \
         | awk -F'[, ]+' '{print $3}') || screen_w=1440
     screen_h=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null \
         | awk -F'[, ]+' '{print $4}') || screen_h=900
-    ww=960; wh=480
+    ww=960; wh=140
     wx=$(( (screen_w - ww) / 2 ))
     wy=$(( (screen_h - wh) / 3 ))
     osascript << AS 2>/dev/null || true
@@ -180,8 +170,21 @@ sleep 0.3
 CG=$(get_cg_window_id) || CG=""
 info "CGWindowID: ${CG:-none (will use full-screen fallback)}"
 
-# Start a plain prompt loop — terminal content stays minimal/clean
-iterm_send "${WIN}" "export DISABLE_AUTO_TITLE=true; export PS1='\\$ '; clear"
+# Use a temp file to drive the title — the pane runs a loop that reads from it
+# and re-asserts the OSC escape every 0.3s, preventing zsh from overwriting.
+# This mirrors how ccp's monitor.sh drives title updates via a status file.
+TITLE_FILE="/tmp/ccp_gif_title_$$.txt"
+printf '%s' "" > "${TITLE_FILE}"
+
+PANE_LOOP="export DISABLE_AUTO_TITLE=true; clear; "
+PANE_LOOP+="T='${TITLE_FILE}'; "
+PANE_LOOP+="while true; do "
+PANE_LOOP+="  t=\$(cat \"\$T\" 2>/dev/null); "
+PANE_LOOP+="  printf '\\033]1;%s\\007\\033]2;\\007' \"\$t\"; "
+PANE_LOOP+="  read -r -t 0.3 2>/dev/null || true; "
+PANE_LOOP+="done"
+
+iterm_send "${WIN}" "${PANE_LOOP}"
 sleep 0.8
 
 heading "Capturing frames"
@@ -194,8 +197,10 @@ for entry in "${FRAMES[@]}"; do
     padded=$(printf "%03d" "${frame_n}")
 
     info "Frame ${padded}: ${title}"
-    iterm_set_title "${WIN}" "${title}"
-    sleep 0.4    # let AppleScript + iTerm2 render the title
+
+    # Write new title to the file — pane loop picks it up within 0.3s
+    printf '%s' "${title}" > "${TITLE_FILE}"
+    sleep 0.7    # wait for loop to fire + iTerm2 to render
 
     outfile="${FRAMES_DIR}/frame_${padded}.png"
     capture_frame "${CG}" "${outfile}"
@@ -204,12 +209,13 @@ for entry in "${FRAMES[@]}"; do
     delay_cs=$(python3 -c "print(int(float('${hold}') * 100))")
     IM_DELAYS+=("${delay_cs}")
 
-    # Hold for the remainder of the frame duration (already took ~0.4s above)
-    remaining=$(python3 -c "import time; r=float('${hold}')-0.4; print(max(r,0))")
+    # Hold for remainder of frame duration (already spent ~0.7s above)
+    remaining=$(python3 -c "r=float('${hold}')-0.7; print(max(r,0))")
     [[ "${remaining}" != "0" ]] && sleep "${remaining}"
 done
 
 info "Captured ${frame_n} frames"
+rm -f "${TITLE_FILE}"
 
 heading "Closing window"
 iterm_close "${WIN}"
@@ -229,10 +235,21 @@ for i in "${!IM_DELAYS[@]}"; do
     im_args+=( -delay "${IM_DELAYS[$i]}" "${FRAMES_DIR}/frame_${padded}.png" )
 done
 
-convert "${im_args[@]}" \
+# Crop each frame: remove transparent shadow padding added by screencapture -l,
+# then trim any remaining whitespace. This leaves just the tight window chrome.
+cropped_args=()
+for i in "${!IM_DELAYS[@]}"; do
+    frame_n=$(( i + 1 ))
+    padded=$(printf "%03d" "${frame_n}")
+    src="${FRAMES_DIR}/frame_${padded}.png"
+    cropped="${FRAMES_DIR}/cropped_${padded}.png"
+    magick "${src}" -trim +repage "${cropped}"
+    cropped_args+=( -delay "${IM_DELAYS[$i]}" "${cropped}" )
+done
+
+magick "${cropped_args[@]}" \
     -loop 0 \
     -layers Optimize \
-    -resize "800x>" \
     "${OUT}"
 
 info "GIF assembled: ${OUT}"
