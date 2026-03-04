@@ -243,7 +243,7 @@ for i in "${!IM_DELAYS[@]}"; do
     padded=$(printf "%03d" "${frame_n}")
     src="${FRAMES_DIR}/frame_${padded}.png"
     cropped="${FRAMES_DIR}/cropped_${padded}.png"
-    magick "${src}" -trim +repage "${cropped}"
+    magick "${src}" -background white -alpha remove -alpha off -trim +repage "${cropped}"
     cropped_args+=( -delay "${IM_DELAYS[$i]}" "${cropped}" )
 done
 
