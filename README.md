@@ -23,14 +23,6 @@ Each pane title shows the project, branch, current task, and live status — ind
 
 > **iTerm2 note:** ccp writes to OSC 1 (the per-pane icon title) so every split pane gets its own independent live title. No two panes share a title bar. See [Terminal Support](#-terminal-support) for how other terminals compare.
 
-### tmux
-
-Works in tmux too. On tmux 2.9+, ccp sets per-pane titles via `select-pane -T` so each pane in a window gets its own independent title.
-
-![Before: tmux split window showing generic pane titles with no task information](docs/screenshots/tmux-before.png)
-
-![After: tmux split window with ccp showing live project, branch, task, and status per pane](docs/screenshots/tmux-after.png)
-
 ## ✨ Features
 
 - **🎬 Live Status Updates** — Building..., Testing..., Pushing... with real-time status text in the pane title
