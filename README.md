@@ -1,6 +1,6 @@
 # **C**laude **C**ode **P**ulse &nbsp;`ccp`
 
-[![CI](https://github.com/brianruggieri/claude-pane-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/brianruggieri/claude-pane-pulse/actions/workflows/ci.yml)
+[![CI](https://github.com/brianruggieri/claude-code-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/brianruggieri/claude-code-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![macOS](https://img.shields.io/badge/macOS-Sonoma+-blue.svg)](https://www.apple.com/macos/)
 [![Bash](https://img.shields.io/badge/bash-3.2+-green.svg)](https://www.gnu.org/software/bash/)
@@ -46,8 +46,8 @@ my-app (main) | Fix auth bug | ☕ Recharging
 
 ```bash
 # Install
-git clone https://github.com/brianruggieri/claude-pane-pulse.git
-cd claude-pane-pulse
+git clone https://github.com/brianruggieri/claude-code-pulse.git
+cd claude-code-pulse
 ./install.sh
 
 # Auto-detect title from your current branch
@@ -79,8 +79,8 @@ ccp --permission-mode bypassPermissions
 - Claude Code CLI: [claude.ai](https://claude.ai)
 
 ```bash
-git clone https://github.com/brianruggieri/claude-pane-pulse.git
-cd claude-pane-pulse
+git clone https://github.com/brianruggieri/claude-code-pulse.git
+cd claude-code-pulse
 ./install.sh
 ```
 
@@ -274,7 +274,7 @@ ccp --goto "auth"           # substring match
 ccp --goto "PR #89"
 ```
 
-Sessions are saved to `~/.config/claude-pane-pulse/sessions.json` and cleaned up on exit.
+Sessions are saved to `~/.config/claude-code-pulse/sessions.json` and cleaned up on exit.
 
 `--goto` jumps to the session's saved working directory and launches Claude there. It doesn't resume a conversation. For that, use Claude's own flags:
 
@@ -364,7 +364,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guid
 
 ```bash
 # Fork and clone
-git clone https://github.com/YOUR_USERNAME/claude-pane-pulse.git
+git clone https://github.com/YOUR_USERNAME/claude-code-pulse.git
 
 # Create feature branch
 git checkout -b feature/amazing-feature
