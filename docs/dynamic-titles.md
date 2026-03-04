@@ -49,9 +49,28 @@ A bash subshell (`title_updater`) runs in the background for the duration of the
 1. Polls the status file every 1 second
 2. Detects when the status changes
 3. Reads the context file (if present)
-4. Writes an OSC escape sequence to update the terminal title
-5. On tmux: calls `tmux rename-window` (slower, one subprocess per update)
-6. On native terminal (iTerm2, Terminal.app, etc.): writes OSC escape bytes directly
+4. Writes a title update using the method appropriate for the detected terminal backend
+
+**Terminal backends** (detected automatically from `$TMUX`, `$TERM_PROGRAM`, `$KITTY_PID`):
+
+Verified terminals:
+
+| Terminal | Backend | Title target | Per-pane titles |
+|----------|---------|--------------|-----------------|
+| iTerm2 | `iterm2` | OSC 1 (per-pane icon name) | ✅ Yes — each split pane is independent |
+| tmux ≥ 2.9 | `tmux-pane` | `select-pane -T` + OSC 1 DCS passthrough | ✅ Yes — per-pane via `TMUX_PANE` |
+| tmux < 2.9 | `tmux-window` | `rename-window` + OSC passthrough | ❌ Whole window only |
+| Apple Terminal | `apple-terminal` | OSC 2 (window title) | ❌ No split panes |
+
+Detection logic for WezTerm (`wezterm`), Ghostty (`ghostty`), and Kitty (`kitty`) is implemented in `lib/title.sh` but these backends have not been verified. Feedback welcome if you use them.
+
+**OSC 1 vs OSC 2** — why it matters for split panes:
+- **OSC 1** (`\033]1;`) sets the *per-pane* title. In iTerm2, each split pane renders its own independent title bar from OSC 1. This is what makes ccp useful in multi-pane setups.
+- **OSC 2** (`\033]2;`) sets the *window* title — shared across the whole app window. Only one pane can "win" this at any time.
+
+ccp writes to OSC 1 for terminals that support it and clears OSC 2 to keep the app-level title bar clean. For terminals that only render OSC 2 (Apple Terminal), ccp falls back to OSC 2.
+
+The **tmux-pane** backend calls `tmux select-pane -T` for the tmux-level title, then wraps OSC 1 in a DCS passthrough sequence so the inner terminal also gets the update. The `rename-window` path (tmux-window) renames the whole window, not just the pane — which is why tmux < 2.9 doesn't support independent pane titles.
 
 ### Cleanup
 

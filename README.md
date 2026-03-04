@@ -1,13 +1,11 @@
 # **C**laude **C**ode **P**ulse &nbsp;`ccp`
 
-> Dynamic terminal titles for Claude Code — see what each agent is actually doing at a glance
-
-[![CI](https://github.com/brianruggieri/claude-code-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/brianruggieri/claude-code-pulse/actions/workflows/ci.yml)
+[![CI](https://github.com/brianruggieri/claude-pane-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/brianruggieri/claude-pane-pulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![macOS](https://img.shields.io/badge/macOS-Sonoma+-blue.svg)](https://www.apple.com/macos/)
 [![Bash](https://img.shields.io/badge/bash-3.2+-green.svg)](https://www.gnu.org/software/bash/)
 
-**C**laude **C**ode **P**ulse (`ccp`) wraps the Claude Code CLI to automatically update your terminal pane titles with real-time status — building, testing, pushing, committing, and more — so you always know what each agent is working on at a glance. Perfect for split-pane terminals running multiple Claude Code sessions.
+`ccp` wraps the Claude Code CLI so your terminal pane titles show what Claude is actually doing. Just run `ccp` and it reads your git branch, figures out a title, and keeps the pane updated in real time as Claude edits, builds, tests, and commits.
 
 ### Before ccp
 
@@ -21,32 +19,41 @@ Each pane title shows the project, branch, current task, and live status — ind
 
 ![After: four iTerm2 split panes with ccp titles showing "project (branch) | task | status" — Editing, Testing, Building, Reading](docs/screenshots/after.png)
 
-> **iTerm2 note:** ccp writes to OSC 1 (the per-pane icon title) so every split pane gets its own independent live title. No two panes share a title bar. See [Terminal Support](#-terminal-support) for how other terminals compare.
+> **iTerm2 note:** ccp writes to OSC 1 (the per-pane icon title) so every split pane gets its own independent live title. No two panes share a title bar. See [Terminal Support](#terminal-support) for how other terminals compare.
 
-## ✨ Features
+```
+my-app (main) | Fix auth bug | ✏️ Editing
+my-app (main) | Fix auth bug | 🧪 Testing
+my-app (main) | Fix auth bug | ✅ Tests passed
+my-app (main) | Fix auth bug | 💾 Committed
+my-app (main) | Fix auth bug | ☕ Recharging
+```
 
-- **🎬 Live Status Updates** — Building..., Testing..., Pushing... with real-time status text in the pane title
-- **📊 Priority-Based Display** — Errors always show first, then active work, then completions
-- **🏗️ Hook-Based Architecture** — Injects hooks into `.claude/settings.local.json` for structured status events (no fragile output parsing)
-- **🔍 Auto-Title from Git** — Detects PR/issue/feature branches and generates titles automatically (PR #89, Issue #12, Feature: foo, etc.)
-- **💾 Session Tracking** — Resume previous sessions by title with `--goto`
-- **🎯 AI Task Summaries** — Optional: `--ai-context` summarizes your prompts to 3–5 words via claude-haiku (opt-in, uses your subscription)
-- **👋 Welcome Status** — Shows `Welcome back, <FirstName>` on startup (from git config)
-- **⚡ Tested on iTerm2, Terminal.app, and tmux** — Detection logic for WezTerm, Ghostty, and Kitty is included but unverified
-- **🚀 Full Claude Passthrough** — All Claude Code flags (`-c/--continue`, `--model`, `--worktree`, etc.) pass straight through
+## Features
 
-## 🚀 Quick Start
+- **Auto-title from git**. `ccp` reads the current branch and generates a clean title automatically. `pr/89-fix-auth` becomes `PR #89 - fix auth`, `feature/new-login` becomes `Feature: new login`, and so on.
+- **Live status updates**. The title updates as Claude works. Editing, testing, building, pushing, all of it.
+- **Idle phrase cycling**. 10 different idle phrases cycle on each conversation turn so you can see at a glance whether a pane just went idle or has been sitting for a while.
+- **Welcome on startup**. Shows `👋 Welcome back, <name>` when you open a pane, before you've typed anything.
+- **Priority-based display**. Errors always show first. Completions (tests passed, committed) immediately override whatever else is showing.
+- **Hook-based**. Uses Claude Code's own hook events for status. No output parsing, no regex, just structured JSON.
+- **Session tracking**. Save and re-open sessions by title with `--goto`.
+- **AI task summaries**. `--ai-context` sends your prompt to claude-haiku and shows a 3-5 word label in the title. Opt-in, uses your subscription.
+- **Tested on iTerm2, Terminal.app, and tmux**. Detection logic for WezTerm, Ghostty, and Kitty is included but unverified.
+- **Full Claude passthrough**. Every Claude Code flag works exactly as expected.
+
+## Quick Start
 
 ```bash
 # Install
-git clone https://github.com/brianruggieri/claude-code-pulse.git
-cd claude-code-pulse
+git clone https://github.com/brianruggieri/claude-pane-pulse.git
+cd claude-pane-pulse
 ./install.sh
 
-# Use with auto-detection (default)
+# Auto-detect title from your current branch
 ccp
 
-# With custom title
+# Or give it a custom title
 ccp "fixing the login bug"
 
 # Quick formats
@@ -54,296 +61,324 @@ ccp --pr 89 "Fix auth bug"
 ccp --feature "New login flow"
 ccp --bug "Fix crash on startup"
 
-# Resume a previous session's directory
+# Go back to a previous session
 ccp --goto "PR #89"
 
-# Forward Claude flags
-ccp -c                          # resume last conversation
-ccp --model opus "My task"      # pass model to Claude
+# Claude flags pass straight through
+ccp -c                                  # resume last conversation
+ccp --model opus "My task"
 ccp --permission-mode bypassPermissions
-ccp "My task" -- --resume abc123
 ```
 
-## 📦 Installation
+## Installation
 
-### Prerequisites
-
-- **macOS** Sonoma or later (may work on earlier versions)
-- **bash** 3.2+ (pre-installed on macOS)
-- **jq** — Install with: `brew install jq`
-- **Claude Code CLI** — See [claude.ai](https://claude.ai)
-
-### Install
+**Prerequisites:**
+- macOS Sonoma or later
+- bash 3.2+ (ships with macOS)
+- jq: `brew install jq`
+- Claude Code CLI: [claude.ai](https://claude.ai)
 
 ```bash
-git clone https://github.com/brianruggieri/claude-code-pulse.git
-cd claude-code-pulse
+git clone https://github.com/brianruggieri/claude-pane-pulse.git
+cd claude-pane-pulse
 ./install.sh
 ```
 
-This installs `ccp` to `~/.local/share/ccp/` and symlinks `~/bin/ccp`.
+Installs to `~/.local/share/ccp/` and symlinks `~/bin/ccp`.
 
-## 📖 Usage
+## Usage
 
-### Basic Commands
+### Auto-title (the default)
+
+Run `ccp` with no arguments. It reads the branch name and builds a title:
+
+| Branch | Title |
+|--------|-------|
+| `pr/89-fix-auth` | `PR #89 - fix auth` |
+| `pull/89-fix-auth` | `PR #89 - fix auth` |
+| `issue/12-refactor-api` | `Issue #12 - refactor api` |
+| `fix/12-crash` | `Issue #12 - crash` |
+| `bug/12-crash` | `Issue #12 - crash` |
+| `feature/new-login` | `Feature: new login` |
+| `main` or anything else | `project-name (branch)` |
+
+No git repo? Falls back to the current directory name.
+
+### Custom title
 
 ```bash
-# Auto-detect title from current git branch
-ccp
+ccp "fixing the login bug"
+```
 
-# Custom title
-ccp "Working on authentication"
+### Quick format helpers
 
+```bash
+ccp --pr 89 "Fix memory leak"        # PR #89 - Fix memory leak
+ccp --issue 12 "Refactor API"        # Issue #12 - Refactor API
+ccp --feature "OAuth integration"    # Feature: OAuth integration
+ccp --bug "Login crash on iOS"       # Bug: Login crash on iOS
+ccp --refactor "Clean up auth"       # Refactor: Clean up auth
+```
+
+### Working directory
+
+```bash
+ccp "PR #89" ~/projects/my-app
+```
+
+`ccp` will `cd` into that directory before launching Claude.
+
+## Title Lifecycle
+
+```
+Startup     my-app (main) | 👋 Welcome back, Brian
+-> type     my-app (main) | fix the login bug | 💤 Idle
+-> reading  my-app (main) | fix the login bug | 📖 Reading
+-> editing  my-app (main) | fix the login bug | ✏️ Editing
+-> testing  my-app (main) | fix the login bug | 🧪 Testing
+-> passed   my-app (main) | fix the login bug | ✅ Tests passed
+-> commit   my-app (main) | fix the login bug | 💾 Committed
+-> pushing  my-app (main) | fix the login bug | ⬆️ Pushing
+-> idle     my-app (main) | fix the login bug | ☕ Recharging
+```
+
+**Startup.** Before you send anything, the pane shows the welcome message.
+
+**Task summary.** Appears as soon as you send a message. Shows the first words of your prompt right away, then updates to a cleaner 3-5 word summary if `--ai-context` is on.
+
+**Status.** Updates based on what Claude is actually doing. When Claude finishes, the status clears to an idle phrase.
+
+**Idle phrases.** Each time Claude finishes responding, the idle phrase advances. After seeing `☕ Recharging` you know the pane just went idle. After seeing `🫡 Standing by` you know it's been a while.
+
+`💤 Idle` · `☕ Recharging` · `🧘 Centering` · `🎯 Ready` · `🫡 Standing by` · `💡 Listening` · `🌿 At rest` · `👀 Watching` · `🌊 Drifting` · `✨ Floating`
+
+## Status Reference
+
+### Both profiles
+
+| Icon | Status | What triggered it | Priority |
+|------|--------|-------------------|----------|
+| 🐛 | Error | Any tool fails | 100 |
+| ❌ | Tests failed | Test command exits non-zero | 90 |
+| ⏸️ | Awaiting approval | Permission request | 88 |
+| 🙋 | Input needed | Notification requires action | 85 |
+| 🔨 | Building | webpack, tsc, cargo build, make, gradle, etc. | 80 |
+| 🧪 | Testing | jest, vitest, pytest, mocha, rspec, go test, etc. | 80 |
+| 📦 | Installing | npm install, pip install, yarn add, cargo add | 80 |
+| ⬆️ | Pushing | git push | 75 |
+| ⬇️ | Pulling | git pull | 75 |
+| 🔀 | Merging | git merge | 75 |
+| 🤖 | Delegating | Task or Agent tool use | 70 |
+| 🐳 | Docker | Any docker command | 70 |
+| ✏️ | Editing | Edit, Write, MultiEdit, NotebookEdit | 65 |
+| ✅ | Tests passed | `N tests passed` in Bash output | 60 |
+| 💾 | Committed | git commit output | 60 |
+| 🏁 | Completed | TaskCompleted or terminal SessionEnd | 60 |
+| 📖 | Reading | Read, Glob, Grep | 55 |
+| 🌐 | Browsing | WebFetch, WebSearch | 55 |
+| 🖥️ | Running | Any other Bash command | 55 |
+| 🔧 | *ToolName* | Unknown tool (shows the actual tool name) | 50 |
+
+Higher priority always wins. The one exception: completion events (✅, 💾, 🏁) override any active status immediately, regardless of priority.
+
+### Verbose-only
+
+With `--status-profile verbose`, lifecycle events also show up:
+
+| Icon | Status | Event | Priority |
+|------|--------|-------|----------|
+| 🚀 | Session started | SessionStart | 52 |
+| 🧠 | Compacting | PreCompact | 52 |
+| 🤖 | Subagent started | SubagentStart | 52 |
+| ✅ | Subagent finished | SubagentStop | 52 |
+| 👥 | Teammate idle | TeammateIdle | 52 |
+| ⚙️ | Config changed | ConfigChange | 52 |
+| 🌿 | Worktree created | WorktreeCreate | 52 |
+| 🧹 | Worktree removed | WorktreeRemove | 52 |
+| 🔔 | *EventName* | Any other event | 52 |
+
+## Status Profiles
+
+```bash
+# Default: high-signal statuses only
+ccp "PR #89"
+
+# All events including lifecycle, subagents, worktrees, config
+ccp --status-profile verbose "PR #89"
+
+# Set a default in your shell
+export CCP_STATUS_PROFILE=verbose
+```
+
+Precedence: `--status-profile` flag > `CCP_STATUS_PROFILE` env var > `quiet` default.
+
+## AI Task Summaries
+
+With `--ai-context`, ccp calls claude-haiku after each prompt and distills it to a 3-5 word label shown in the title. Without it, the first words of your prompt show as-is.
+
+```bash
+ccp --ai-context "PR #89 - Fix auth"
+
+# Always on, via environment variable
+export CCP_ENABLE_AI_CONTEXT=true
+```
+
+This uses your Claude subscription. See [docs/ai-context.md](docs/ai-context.md) for details.
+
+## Claude Flag Passthrough
+
+Every Claude Code flag passes straight through to `claude`:
+
+```bash
+ccp -c                                      # resume last conversation
+ccp -r abc-123                              # resume by session ID
+ccp --model opus "My task"
+ccp --model claude-sonnet-4-6 "My task"
+ccp --permission-mode bypassPermissions
+ccp --permission-mode acceptEdits
+ccp --effort high "Big refactor"
+ccp -w feat-login "Fix login"               # create git worktree
+ccp --system-prompt "Be terse" "My task"
+ccp --append-system-prompt "Use TypeScript"
+ccp --add-dir ~/shared/lib
+ccp --allowedTools Bash Edit Read
+ccp --mcp-config ./mcp.json
+ccp --dangerously-skip-permissions
+ccp "My task" -- --resume abc123            # explicit passthrough with --
+```
+
+Any unrecognized `-*` flag is also forwarded, so new Claude flags just work.
+
+### Full forwarded flag list
+
+**No value:**
+`-c` / `--continue`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--verbose`, `--ide`, `--no-ide`, `--fork-session`, `--chrome`, `--no-chrome`, `--no-session-persistence`, `--include-partial-messages`, `--replay-user-messages`, `--strict-mcp-config`, `--mcp-debug`
+
+**Required value:**
+`--model`, `--permission-mode`, `--effort`, `--system-prompt`, `--append-system-prompt`, `--debug-file`, `--session-id`, `--output-format`, `--input-format`, `--settings`, `--setting-sources`, `--fallback-model`, `--max-budget-usd`, `--json-schema`, `--agent`
+
+**Optional value:**
+`-r` / `--resume [ID]`, `--from-pr [VALUE]`, `-w` / `--worktree [NAME]`, `-d` / `--debug [FILTER]`
+
+**One or more values:**
+`--add-dir`, `--allowedTools` / `--allowed-tools`, `--disallowedTools` / `--disallowed-tools`, `--mcp-config`, `--tools`, `--betas`, `--plugin-dir`, `--file`, `--agents`
+
+## Session Management
+
+```bash
 # List active sessions
 ccp --list
 
-# Resume a previous session's directory
+# Jump back to a previous session's directory
+ccp --goto "auth"           # substring match
 ccp --goto "PR #89"
-
-# Disable dynamic updates (static title)
-ccp --no-dynamic "My task"
 ```
 
-### Quick Title Formats
+Sessions are saved to `~/.config/claude-pane-pulse/sessions.json` and cleaned up on exit.
+
+`--goto` jumps to the session's saved working directory and launches Claude there. It doesn't resume a conversation. For that, use Claude's own flags:
 
 ```bash
-ccp --pr 89 "Fix memory leak"          # PR #89 - Fix memory leak
-ccp --issue 12 "Refactor API"          # Issue #12 - Refactor API
-ccp --feature "OAuth integration"      # Feature: OAuth integration
-ccp --bug "Login crash"                # Bug: Login crash
-ccp --refactor "Clean up code"         # Refactor: Clean up code
+ccp -c                      # resume last conversation
+ccp --resume abc-123        # resume by session ID
 ```
 
-### Claude Flag Passthrough
+## Terminal Support
 
-Any Claude Code flag can be passed directly to `ccp` and forwarded to Claude:
+Tested on:
+
+| Terminal | Notes |
+|----------|-------|
+| **iTerm2** | Per-pane title (OSC 1). Each split pane updates independently. The primary target. |
+| **Terminal.app** | Window title (OSC 2). |
+| **tmux 2.9+** | Per-pane title via `select-pane -T` plus OSC 1 passthrough. |
+| **tmux < 2.9** | Window rename via `rename-window`. No per-pane title API. |
+
+Detection logic for WezTerm, Ghostty, and Kitty exists in `lib/title.sh` but these have not been verified. If you use one of these terminals, feedback is welcome.
+
+## Multi-Pane Workflow
+
+Open four panes, run a session in each:
 
 ```bash
-# Resume conversation
-ccp -c
-ccp --continue
-
-# Specify model
-ccp --model opus "My task"
-
-# Permission mode
-ccp --permission-mode bypassPermissions
-
-# Worktree
-ccp --worktree feat-login "Fix login"
-
-# System prompt
-ccp --system-prompt "Be terse" "My task"
-
-# Combine multiple flags
-ccp --model sonnet --permission-mode acceptEdits
-
-# Explicit passthrough with --
-ccp "My task" -- --resume abc123 --model opus
-```
-
-### Dynamic Status Updates
-
-The title automatically updates to show what Claude Code is doing:
-
-```
-Initial:    "project (main) | Fix auth bug"
-Welcome:    "👋 Welcome back, Brian | Fix auth bug"
-Thinking:   "💭 Thinking | Fix auth bug"
-Editing:    "✏️ Editing | Fix auth bug"
-Testing:    "🧪 Testing | Fix auth bug"
-Passed:     "✅ Tests passed | Fix auth bug"
-Committed:  "💾 Committed | Fix auth bug"
-Pushing:    "⬆️ Pushing | Fix auth bug"
-Idle:       "💤 Idle | Fix auth bug"
-```
-
-![iTerm2 pane title bar showing ccp status updates across the full session lifecycle](docs/screenshots/after.png)
-
-Each status updates in real time and is cleared after the operation completes.
-
-### Status Profiles
-
-Two status surfaces are available:
-
-```bash
-# Default (quiet) — high-signal statuses only
-ccp "My task"
-
-# Full lifecycle (verbose) — includes session/worktree/subagent/config events
-ccp --status-profile verbose "My task"
-```
-
-### Title Format
-
-```
-project(branch) | task summary | status
-```
-
-Example: `my-project (main) | Fix Auth Bug | ✏️ Editing`
-
-The **task summary** shows the first words of your prompt; with `--ai-context` enabled it becomes a 3–5 word AI-generated label. The **status** updates in real time based on hook events.
-
-![iTerm2 split panes with ccp titles — each pane showing project (branch) | task | live status](docs/screenshots/after.png)
-
-## 📊 Status Icons
-
-| Icon | Status | Priority | Profile |
-|------|--------|----------|---------|
-| 🐛 | Error | 100 | both |
-| ❌ | Tests failed | 90 | both |
-| ⏸️ | Awaiting approval | 88 | both |
-| 🙋 | Input needed | 85 | both |
-| 🔨 | Building | 80 | both |
-| 🧪 | Testing | 80 | both |
-| 📦 | Installing | 80 | both |
-| ⬆️ | Pushing | 75 | both |
-| ⬇️ | Pulling | 75 | both |
-| 🔀 | Merging | 75 | both |
-| 🤖 | Delegating | 70 | both |
-| 💭 | Thinking | 70 | both |
-| 🐳 | Docker | 70 | both |
-| ✏️ | Editing | 65 | both |
-| ✅ | Tests passed | 60 | both |
-| 💾 | Committed | 60 | both |
-| 🏁 | Completed | 60 | both |
-| 📖 | Reading | 55 | both |
-| 🌐 | Browsing | 55 | both |
-| 🖥️ | Running | 55 | both |
-| 👋 | Welcome (startup) | — | both |
-| 🚀 | Session started | — | verbose |
-| 🧠 | Compacting | — | verbose |
-| ✅ | Subagent finished | — | verbose |
-| 👥 | Teammate idle | — | verbose |
-| ⚙️ | Config changed | — | verbose |
-| 🌿 | Worktree created | — | verbose |
-| 🧹 | Worktree removed | — | verbose |
-| 💤 | Idle | 10 | both |
-
-Higher priority statuses override lower ones. Completion events (✅, 💾, 🏁) always appear immediately. Idle only appears after 60 seconds of no hook activity.
-
-## 🎯 Multi-Pane Workflow
-
-Perfect for running multiple Claude Code instances in split panes:
-
-```bash
-# Terminal split into 4 panes
-# Pane 1
 ccp --pr 89 "Fix auth"
-
-# Pane 2
-ccp --issue 12 "Refactor"
-
-# Pane 3
+ccp --issue 12 "API tests"
 ccp --feature "OAuth"
-
-# Pane 4
 ccp --bug "Login crash"
 ```
 
-Each pane's title bar updates independently. Example pane titles while working:
+Each pane title updates on its own:
 
 ```
-✳ PR #89 - Fix auth | Fix auth bug | ✏️ Editing
-✳ Issue #12 - Refactor | Refactor API layers | 🧪 Testing
-✳ Feature: OAuth | Add OAuth provider | ✅ Tests passed
-✳ Bug: Login crash | Fix login race condition | ⬆️ Pushing
+my-app (pr/89-fix-auth)      | fix auth   | ✏️ Editing
+my-app (issue/12-api-tests)  | api tests  | 🧪 Testing
+my-app (feat-oauth)          | oauth      | ✅ Tests passed
+my-app (bug/login-crash)     | login bug  | ⬆️ Pushing
 ```
 
 ![iTerm2 4-pane split with ccp — each pane showing its own live project, branch, task, and status](docs/screenshots/after.png)
 
-## 🛠️ Configuration
+## Options Reference
 
-### Auto-Title from Git Branch
+### ccp options
 
-Auto-detection recognizes these patterns:
+| Option | Description |
+|--------|-------------|
+| `TITLE` | Task title (first positional arg) |
+| `DIRECTORY` | Working directory (second positional arg, must be an existing path) |
+| `--pr N DESC` | Quick format: `PR #N - DESC` |
+| `--issue N DESC` | Quick format: `Issue #N - DESC` |
+| `--feature DESC` | Quick format: `Feature: DESC` |
+| `--bug DESC` | Quick format: `Bug: DESC` |
+| `--refactor DESC` | Quick format: `Refactor: DESC` |
+| `--auto-title` | Auto-detect title from git branch (this is the default) |
+| `--no-dynamic` | Static title only, no live updates |
+| `--status-profile quiet\|verbose` | Which events to surface (default: `quiet`) |
+| `--ai-context` | Summarize prompts via claude-haiku (opt-in, uses your subscription) |
+| `--goto TITLE` | Re-open a previous session by title |
+| `--list`, `-l` | List active ccp sessions |
+| `--help`, `-h` | Show help |
+| `--version`, `-v` | Show version |
+| `--` | Everything after this goes directly to Claude |
+| any `-*` flag | Unknown flags are forwarded to Claude |
 
-```
-pr/89-fix-auth          → PR #89 - fix auth
-pull/89-fix-auth        → PR #89 - fix auth
-issue/12-refactor-api   → Issue #12 - refactor api
-fix/12-refactor-api     → Issue #12 - refactor api
-bug/12-refactor-api     → Issue #12 - refactor api
-feature/new-login       → Feature: new login
-main                    → project-name (main)
-```
+### Environment variables
 
-Just run `ccp` with no arguments and the title is generated automatically.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CCP_STATUS_PROFILE` | `quiet` | Default status profile |
+| `CCP_ENABLE_AI_CONTEXT` | `false` | Always-on AI prompt summarization |
 
-### Status Profile Environment Variable
+## Documentation
 
-Set a default status profile via environment variable:
-
-```bash
-export CCP_STATUS_PROFILE=verbose
-ccp "My task"  # will use verbose by default
-```
-
-Or override on the command line with `--status-profile quiet|verbose`.
-
-### Disable Dynamic Updates
-
-```bash
-ccp --no-dynamic "Static title — no updates"
-```
-
-The title is set once and never changes. Useful if you prefer a clean, static title bar.
-
-### Session Management
-
-```bash
-# List all active sessions
-ccp --list
-
-# Resume a previous session's directory
-ccp --goto "PR #89"
-
-# Exact title match
-ccp --goto "PR #89 - Fix auth bug"
-```
-
-`--goto` finds a session by title (substring match) and changes to that directory, then launches Claude. This is NOT conversation resume — for that, use Claude's own `-c/--continue` flag.
-
-## 📚 Documentation
-
-- [Installation Guide](docs/installation.md)
 - [Usage Guide](docs/usage.md)
 - [Dynamic Titles](docs/dynamic-titles.md)
+- [Hook Integration](docs/hooks.md)
 - [AI Context Summarization](docs/ai-context.md)
+- [Installation Guide](docs/installation.md)
 - [Contributing](CONTRIBUTING.md)
 
-## 🤝 Contributing
+## Contributing
 
-Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines.
 
 ```bash
 # Fork and clone
-git clone https://github.com/YOUR_USERNAME/claude-code-pulse.git
+git clone https://github.com/YOUR_USERNAME/claude-pane-pulse.git
 
 # Create feature branch
 git checkout -b feature/amazing-feature
-
-# Commit changes
 git commit -m 'feat: add amazing feature'
-
-# Push and create PR
 git push origin feature/amazing-feature
 ```
 
-## 📝 License
+## License
 
-MIT © Brian Ruggieri — see [LICENSE](LICENSE)
+MIT © Brian Ruggieri. See [LICENSE](LICENSE).
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- Built for [Claude Code](https://code.claude.com/) by Anthropic
-- Inspired by the need for better multi-agent visibility
-- Thanks to the shell scripting community
-
-## 📮 Contact
-
-- **Issues**: [GitHub Issues](https://github.com/brianruggieri/claude-code-pulse/issues)
-- **Email**: brianruggieri@gmail.com
+Built for [Claude Code](https://code.claude.com/) by Anthropic. Inspired by the need to keep track of what's happening across multiple concurrent agents.
 
 ---
 
