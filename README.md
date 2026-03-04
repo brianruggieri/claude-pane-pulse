@@ -25,7 +25,7 @@ my-app (main) | Fix auth bug | ☕ Recharging
 - **Hook-based**. Uses Claude Code's own hook events for status. No output parsing, no regex, just structured JSON.
 - **Session tracking**. Save and re-open sessions by title with `--goto`.
 - **AI task summaries**. `--ai-context` sends your prompt to claude-haiku and shows a 3-5 word label in the title. Opt-in, uses your subscription.
-- **Works everywhere**. iTerm2, Terminal.app, tmux, WezTerm, Ghostty, and Kitty.
+- **Tested on iTerm2, Terminal.app, and tmux**. Detection logic for WezTerm, Ghostty, and Kitty is included but unverified.
 - **Full Claude passthrough**. Every Claude Code flag works exactly as expected.
 
 ## Quick Start
@@ -271,15 +271,16 @@ ccp --resume abc-123        # resume by session ID
 
 ## Terminal Support
 
+Tested on:
+
 | Terminal | Notes |
 |----------|-------|
-| iTerm2 | Per-pane title (OSC 1), each split pane updates independently |
-| Terminal.app | Window title (OSC 2) |
-| tmux 2.9+ | Per-pane title via `select-pane -T` plus OSC passthrough |
-| tmux < 2.9 | Window rename via `rename-window` plus OSC passthrough |
-| WezTerm | Per-pane title (OSC 1) |
-| Ghostty | Window title (OSC 2) |
-| Kitty | Title via `kitty @ set-window-title` |
+| **iTerm2** | Per-pane title (OSC 1). Each split pane updates independently. The primary target. |
+| **Terminal.app** | Window title (OSC 2). |
+| **tmux 2.9+** | Per-pane title via `select-pane -T` plus OSC 1 passthrough. |
+| **tmux < 2.9** | Window rename via `rename-window`. No per-pane title API. |
+
+Detection logic for WezTerm, Ghostty, and Kitty exists in `lib/title.sh` but these have not been verified. If you use one of these terminals, feedback is welcome.
 
 ## Multi-Pane Workflow
 

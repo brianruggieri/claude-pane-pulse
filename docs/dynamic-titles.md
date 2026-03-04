@@ -53,24 +53,24 @@ A bash subshell (`title_updater`) runs in the background for the duration of the
 
 **Terminal backends** (detected automatically from `$TMUX`, `$TERM_PROGRAM`, `$KITTY_PID`):
 
-| Terminal | Backend | Title target | Independent split-pane titles |
-|----------|---------|--------------|-------------------------------|
-| iTerm2 | `iterm2` | OSC 1 (icon name / per-pane) | ✅ Yes — each split pane has its own title bar |
-| WezTerm | `wezterm` | OSC 1 (per-pane) | ✅ Yes |
+Verified terminals:
+
+| Terminal | Backend | Title target | Per-pane titles |
+|----------|---------|--------------|-----------------|
+| iTerm2 | `iterm2` | OSC 1 (per-pane icon name) | ✅ Yes — each split pane is independent |
 | tmux ≥ 2.9 | `tmux-pane` | `select-pane -T` + OSC 1 DCS passthrough | ✅ Yes — per-pane via `TMUX_PANE` |
 | tmux < 2.9 | `tmux-window` | `rename-window` + OSC passthrough | ❌ Whole window only |
-| Kitty | `kitty` | `kitty @ set-window-title` IPC | ❌ Active window only |
 | Apple Terminal | `apple-terminal` | OSC 2 (window title) | ❌ No split panes |
-| Ghostty | `ghostty` | OSC 2 (window title) | ❌ No per-pane title API |
-| Other / fallback | `osc2` | OSC 2 (window title) | ❌ |
 
-**OSC 1 vs OSC 2** — the key distinction for split-pane use:
-- **OSC 1** (`\033]1;`) sets the *icon name* / *per-pane* title. In iTerm2 and WezTerm, this is the title shown in each individual split pane's title bar — completely independent between panes.
-- **OSC 2** (`\033]2;`) sets the *window* title — shared across the whole app window. Not useful in split-pane layouts since every pane would overwrite the same title.
+Detection logic for WezTerm (`wezterm`), Ghostty (`ghostty`), and Kitty (`kitty`) is implemented in `lib/title.sh` but these backends have not been verified. Feedback welcome if you use them.
 
-ccp writes to OSC 1 for terminals that support it and clears OSC 2 to keep the app-level title bar clean. For terminals that only render OSC 2 (Apple Terminal, Ghostty), ccp falls back to OSC 2.
+**OSC 1 vs OSC 2** — why it matters for split panes:
+- **OSC 1** (`\033]1;`) sets the *per-pane* title. In iTerm2, each split pane renders its own independent title bar from OSC 1. This is what makes ccp useful in multi-pane setups.
+- **OSC 2** (`\033]2;`) sets the *window* title — shared across the whole app window. Only one pane can "win" this at any time.
 
-The **tmux-pane** backend (tmux ≥ 2.9) additionally calls `tmux select-pane -T` to set the pane's native title in tmux's status bar, and then wraps OSC 1 in DCS passthrough so the inner terminal also gets the update. The `rename-window` path was deliberately not used for per-pane mode because it renames the whole tmux window, not just the active pane.
+ccp writes to OSC 1 for terminals that support it and clears OSC 2 to keep the app-level title bar clean. For terminals that only render OSC 2 (Apple Terminal), ccp falls back to OSC 2.
+
+The **tmux-pane** backend calls `tmux select-pane -T` for the tmux-level title, then wraps OSC 1 in a DCS passthrough sequence so the inner terminal also gets the update. The `rename-window` path (tmux-window) renames the whole window, not just the pane — which is why tmux < 2.9 doesn't support independent pane titles.
 
 ### Cleanup
 
