@@ -33,17 +33,21 @@ show_help() {
 ${GREEN}Claude Pane Pulse${NC} v${VERSION} - Dynamic terminal titles for Claude Code
 
 ${BLUE}Usage:${NC}
-    ${SCRIPT_NAME} [OPTIONS] [NOTE] [DIRECTORY]
+    ${SCRIPT_NAME} [CCP OPTIONS] [NOTE] [DIRECTORY] [-- CLAUDE OPTIONS]
 
     With no arguments, the title is auto-detected from the git project name.
     Pass a NOTE to use a custom message instead (e.g. your task or context).
+    Flags not consumed by ccp are forwarded to Claude. Use -- to pass anything
+    that would otherwise be ambiguous.
 
 ${BLUE}Examples:${NC}
-    ${SCRIPT_NAME}                          # auto: project name
-    ${SCRIPT_NAME} "fixing the login bug"   # custom note as title
+    ${SCRIPT_NAME}                              # auto: project name
+    ${SCRIPT_NAME} "fixing the login bug"       # custom note as title
     ${SCRIPT_NAME} --pr 89 "Fix auth"
-    ${SCRIPT_NAME} --auto-title             # same as no args
-    ${SCRIPT_NAME} --list
+    ${SCRIPT_NAME} -c                           # resume last conversation
+    ${SCRIPT_NAME} --model sonnet               # pass model to Claude
+    ${SCRIPT_NAME} --permission-mode acceptEdits
+    ${SCRIPT_NAME} "My task" -- --resume abc123 --model opus
 
 ${BLUE}Quick Formats:${NC}
     --pr NUMBER DESC        PR #NUMBER - DESC
@@ -52,14 +56,33 @@ ${BLUE}Quick Formats:${NC}
     --bug DESC              Bug: DESC
     --refactor DESC         Refactor: DESC
 
-${BLUE}Options:${NC}
-    --auto-title            Auto-detect title from git branch
+${BLUE}ccp Options:${NC}
+    --auto-title            Auto-detect title from git branch (default)
     --no-dynamic            Disable dynamic updates (static title)
     --status-profile MODE   Status surface: quiet (default) or verbose
-    --continue TITLE        Resume session by title search
+    --goto TITLE            Re-open a previous session by title search
     --list, -l              List all active sessions
     --help, -h              Show this help
     --version, -v           Show version
+
+${BLUE}Forwarded to Claude (common):${NC}
+    -c, --continue          Resume most recent conversation
+    -r, --resume [ID]       Resume by session ID
+    --model <model>         Model (e.g. sonnet, opus, claude-sonnet-4-6)
+    --permission-mode MODE  acceptEdits | bypassPermissions | default | dontAsk | plan
+    --effort LEVEL          low | medium | high
+    --dangerously-skip-permissions
+    --system-prompt TEXT
+    --append-system-prompt TEXT
+    --add-dir DIRS          Additional allowed directories
+    --allowedTools TOOLS
+    --disallowedTools TOOLS
+    --worktree [NAME]       Create a git worktree for this session
+    --from-pr [VALUE]       Resume session linked to a PR
+    --ide                   Connect to IDE on startup
+    --verbose
+    --debug [FILTER]
+    (any other claude flag)
 
 ${BLUE}Features:${NC}
     • Dynamic status updates (Building, Testing, Pushing, etc.)
@@ -68,6 +91,7 @@ ${BLUE}Features:${NC}
     • Priority-based status display
     • Session tracking and resumption
     • Auto-detection from git branches
+    • Welcome status on startup
 
 ${BLUE}Status Icons:${NC}
     🔨 Building    🧪 Testing     ✅ Tests passed    ❌ Tests failed
@@ -127,6 +151,7 @@ main() {
     local directory="${PWD}"
     local enable_dynamic=true
     local status_profile_cli=""
+    local claude_args=()
 
     # Initialize state directory
     init_state_dir
@@ -134,6 +159,7 @@ main() {
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            # ── ccp-specific flags ────────────────────────────────────────────
             --help|-h)
                 show_help
                 exit 0
@@ -202,8 +228,14 @@ main() {
                 title="Refactor: $1"
                 shift
                 ;;
-            --continue)
+            --goto)
+                # Re-open a previous ccp session by title search (cd to its directory).
+                # Renamed from --continue to avoid conflict with Claude's -c/--continue.
                 shift
+                if [[ $# -lt 1 ]]; then
+                    log_error "Usage: ${SCRIPT_NAME} --goto TITLE"
+                    exit 1
+                fi
                 local search="$1"
                 directory=$(find_session "${search}")
                 if [[ -z "${directory}" ]]; then
@@ -215,6 +247,66 @@ main() {
                 title=$(find_session_title "${search}")
                 shift
                 ;;
+
+            # ── Flags forwarded to Claude ─────────────────────────────────────
+            # Flags with no value
+            -c|--continue|\
+            --dangerously-skip-permissions|--allow-dangerously-skip-permissions|\
+            --verbose|--ide|--no-ide|--fork-session|--chrome|--no-chrome|\
+            --no-session-persistence|--include-partial-messages|\
+            --replay-user-messages|--strict-mcp-config|--mcp-debug)
+                claude_args+=("$1")
+                shift
+                ;;
+            # Flags with a required value
+            --model|--permission-mode|--effort|--system-prompt|\
+            --append-system-prompt|--debug-file|--session-id|\
+            --output-format|--input-format|--settings|--setting-sources|\
+            --fallback-model|--max-budget-usd|--json-schema|--agent)
+                if [[ $# -lt 2 ]]; then
+                    log_error "Flag $1 requires a value"
+                    exit 1
+                fi
+                claude_args+=("$1" "$2")
+                shift 2
+                ;;
+            # Flags with an optional value (collect next arg if it isn't a flag)
+            -r|--resume|--from-pr|-w|--worktree|-d|--debug)
+                claude_args+=("$1")
+                shift
+                if [[ $# -gt 0 && "$1" != -* ]]; then
+                    claude_args+=("$1")
+                    shift
+                fi
+                ;;
+            # Flags that accept one-or-more values (collect next arg if not a flag)
+            --add-dir|--allowedTools|--allowed-tools|--disallowedTools|\
+            --disallowed-tools|--mcp-config|--tools|--betas|--plugin-dir|\
+            --file|--agents)
+                claude_args+=("$1")
+                shift
+                while [[ $# -gt 0 && "$1" != -* ]]; do
+                    claude_args+=("$1")
+                    shift
+                done
+                ;;
+
+            # ── Explicit passthrough separator ────────────────────────────────
+            --)
+                shift
+                while [[ $# -gt 0 ]]; do
+                    claude_args+=("$1")
+                    shift
+                done
+                ;;
+
+            # ── Unknown dash-flags: forward to Claude ─────────────────────────
+            -*)
+                claude_args+=("$1")
+                shift
+                ;;
+
+            # ── Positional args: ccp title and optional directory ─────────────
             *)
                 if [[ -z "${title}" ]]; then
                     title="$1"
@@ -269,6 +361,9 @@ main() {
         log_info "Dynamic titles: ${GREEN}enabled${NC}"
         log_info "Status profile: ${CCP_STATUS_PROFILE}"
     fi
+    if [[ ${#claude_args[@]} -gt 0 ]]; then
+        log_info "Claude args: ${claude_args[*]}"
+    fi
     echo ""
 
     # Change to target directory
@@ -280,6 +375,9 @@ main() {
     export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1
 
     # Launch Claude Code
+    local claude_cmd
+    claude_cmd=$(get_claude_cmd)
+
     if [[ "${enable_dynamic}" = true ]]; then
         # Export hook file paths so monitor and hook_runner.sh can share them
         export CCP_STATUS_FILE="${STATE_DIR}/status.$$.txt"
@@ -295,19 +393,25 @@ main() {
         fi
         export CCP_PROJECT_NAME CCP_BRANCH_NAME
 
+        # Write welcome status — shown immediately on startup.
+        # Overwritten by the first hook event (UserPromptSubmit → "💭 Thinking").
+        local _welcome_name
+        _welcome_name=$(git -C "${directory}" config user.name 2>/dev/null \
+            | awk '{print $1}') || _welcome_name=""
+        [[ -z "${_welcome_name}" ]] && _welcome_name="${USER:-}"
+        if [[ -n "${_welcome_name}" ]]; then
+            printf '%s' "👋 Welcome back, ${_welcome_name}" > "${CCP_STATUS_FILE}"
+        fi
+
         # Inject hooks into the project's .claude/settings.local.json
         ccp_settings_file=$(setup_ccp_hooks "${directory}" "${CCP_HOOK_RUNNER}")
 
         # Start background title updater, then run Claude directly.
         title_updater "${title}"
 
-        local claude_cmd
-        claude_cmd=$(get_claude_cmd)
-        "${claude_cmd}"
+        "${claude_cmd}" ${claude_args[@]+"${claude_args[@]}"}
     else
-        local claude_cmd
-        claude_cmd=$(get_claude_cmd)
-        "${claude_cmd}"
+        "${claude_cmd}" ${claude_args[@]+"${claude_args[@]}"}
     fi
 }
 

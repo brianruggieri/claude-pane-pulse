@@ -62,106 +62,11 @@ status_to_priority() {
     fi
 }
 
-# ── extract_context ───────────────────────────────────────────────────────────
-# Legacy: retained for test compatibility. Not called in production.
-# Parse a stripped line of output and return "status|priority".
-# Empty status means no match — caller keeps the previous context.
+# ── animate_status ────────────────────────────────────────────────────────────
+# Append a cycling spinner to active in-progress statuses.
+# Used by tests; the hot path in title_updater inlines the same logic
+# to avoid $() forks on every animation tick.
 #
-# Pattern philosophy:
-#   • Error/failure patterns anchor to word boundaries to avoid false positives.
-#   • Build/test/install patterns match both raw command output AND Claude Code's
-#     "● Bash(command...)" tool-call headers, so they fire the moment Claude
-#     decides to run a command rather than only after the command prints output.
-#   • Thinking is detected structurally: any "● <word>..." line means Claude is
-#     processing, regardless of the specific phrase Claude uses ("Dilly-dallying",
-#     "Thinking", "Pondering", or any future variant).
-#   • File-editing is detected from "● Edit(" / "● Write(" tool-call headers.
-#   • A generic "● Bash(" catch-all covers any shell command not matched above.
-extract_context() {
-    local line="$1"
-    local context=""
-    local priority=0
-
-    # ── Error states (highest priority) ──────────────────────────────────────
-    # Anchor to line start / word boundaries to reduce false positives on
-    # build output that legitimately prints error messages mid-stream.
-    if [[ "${line}" =~ ^(Error|error):[[:space:]] || \
-          "${line}" =~ ^(Exception|Traceback) || \
-          "${line}" =~ ^FAILED || \
-          "${line}" =~ [[:space:]]FAILED ]]; then
-        context="🐛 Error"
-        priority=100
-
-    # ── Test failures ─────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+(failed|failing) ]]; then
-        context="❌ Tests failed"
-        priority=90
-
-    # ── Active builds ─────────────────────────────────────────────────────────
-    # Matches: raw output keywords OR ● Bash( lines containing build commands.
-    elif [[ "${line}" =~ (Building|Compiling|Bundling) || \
-            "${line}" =~ ●[[:space:]]*Bash\(.*(build|compile|bundle|webpack|rollup|esbuild|tsc[[:space:]]|vite[[:space:]]build|cargo[[:space:]]build|make[[:space:]]|cmake|gradle|mvn[[:space:]]package) ]]; then
-        context="🔨 Building"
-        priority=80
-
-    # ── Active tests ──────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ (npm|yarn|pnpm)[[:space:]].*test || \
-            "${line}" =~ ●[[:space:]]*Bash\(.*(jest|vitest|pytest|mocha|rspec|go[[:space:]]test|cargo[[:space:]]test|phpunit|bun[[:space:]]test) ]]; then
-        context="🧪 Testing"
-        priority=80
-
-    # ── Package installs ──────────────────────────────────────────────────────
-    elif [[ "${line}" =~ (npm|yarn)[[:space:]]+(install|add|ci) || \
-            "${line}" =~ ●[[:space:]]*Bash\(.*(npm|yarn|pnpm|bun)[[:space:]]+(install|add|ci|i[[:space:]]) || \
-            "${line}" =~ ●[[:space:]]*Bash\(pip[[:space:]]+(install|download) || \
-            "${line}" =~ ●[[:space:]]*Bash\(cargo[[:space:]]add ]]; then
-        context="📦 Installing"
-        priority=80
-
-    # ── Git: push / pull / merge ──────────────────────────────────────────────
-    # These match both raw "git push" output AND "● Bash(git push ...)" headers.
-    elif [[ "${line}" =~ git[[:space:]]+push ]]; then
-        context="⬆️ Pushing"
-        priority=75
-    elif [[ "${line}" =~ git[[:space:]]+pull ]]; then
-        context="⬇️ Pulling"
-        priority=75
-    elif [[ "${line}" =~ git[[:space:]]+merge ]]; then
-        context="🔀 Merging"
-        priority=75
-
-    # ── Docker ────────────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ docker[[:space:]]+(build|run|push|compose) ]]; then
-        context="🐳 Docker"
-        priority=70
-
-    # ── File editing ──────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ ●[[:space:]]*(Edit|Write|MultiEdit|NotebookEdit)\( ]]; then
-        context="✏️ Editing"
-        priority=65
-
-    # ── Test success ──────────────────────────────────────────────────────────
-    elif [[ "${line}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+passed ]]; then
-        context="✅ Tests passed"
-        priority=60
-
-    # ── Git commit completion ─────────────────────────────────────────────────
-    elif [[ "${line}" =~ git[[:space:]]+commit ]]; then
-        context="💾 Committed"
-        priority=60
-
-    # ── Generic shell command (catch-all for unrecognised ● Bash lines) ───────
-    elif [[ "${line}" =~ ●[[:space:]]*Bash\( ]]; then
-        context="🖥️ Running"
-        priority=55
-
-    fi
-
-    echo "${context}|${priority}"
-}
-
-# animate_status: append a cycling spinner to active in-progress statuses.
-# Legacy: retained for test compatibility. Inlined in title_updater.
 # Uses Claude Code's exact spinner characters in their correct ping-pong order.
 # Source: reverse-engineered from raw terminal output; the original expression
 # array is ["·","✻","✽","✶","✳","✢"] driven by a triangle-wave oscillator,
@@ -261,7 +166,7 @@ title_updater() {
                 fi
             fi
 
-            # Inline animation — no $() fork.
+            # Inline animation — no $() fork. Same ping-pong sequence as animate_status.
             local _spinner=""
             if [[ "${current_context}" =~ (Building|Testing|Installing|Pushing|Pulling|Merging|Docker|Thinking|Editing|Running|Reading|Browsing|Delegating) || "${current_context}" =~ "✸" ]]; then
                 case $((frame_counter % 10)) in
@@ -326,7 +231,6 @@ cleanup_monitor() {
 }
 
 export -f status_to_priority
-export -f extract_context
 export -f animate_status
 export -f title_updater
 export -f cleanup_monitor
