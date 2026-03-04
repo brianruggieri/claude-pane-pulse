@@ -168,33 +168,43 @@ end tell
 APPLESCRIPT
 }
 
-# ── screenshot helper ─────────────────────────────────────────────────────────
+# ── screenshot helpers ────────────────────────────────────────────────────────
 
-# Capture a specific iTerm2 window to a PNG file.
-# Uses screencapture -R x,y,width,height with a small inset to crop the
-# window shadow and OS chrome.
+# Get the CoreGraphics window ID of the frontmost iTerm2 window.
+# Call immediately after creating/resizing the window, before anything
+# can steal focus back to the script's own terminal.
+get_cg_window_id() {
+    python3 - << 'PY' 2>/dev/null
+import Quartz
+wins = Quartz.CGWindowListCopyWindowInfo(
+    Quartz.kCGWindowListOptionOnScreenOnly,
+    Quartz.kCGNullWindowID
+)
+for w in wins:
+    if (w.get("kCGWindowOwnerName") == "iTerm2"
+            and w.get("kCGWindowLayer", 1) == 0
+            and w.get("kCGWindowAlpha", 0.0) > 0):
+        print(w["kCGWindowNumber"])
+        break
+PY
+}
+
+# Capture an iTerm2 window using screencapture -l (window ID mode).
+# Produces a PNG with transparent background, rounded corners, and macOS
+# drop shadow — equivalent to Shottr window capture mode.
+# cg_id must be obtained right after window creation, not at capture time.
 capture_window() {
-    local win_id="$1"
+    local cg_id="$1"
     local outfile="$2"
-    local margin="${3:-8}"   # pixels to inset from reported bounds (removes shadow)
 
-    local bounds
-    bounds=$(iterm_window_bounds "${win_id}") || {
-        warn "Could not get window bounds for ${win_id}"
-        return 1
-    }
+    if [[ -z "${cg_id}" ]]; then
+        warn "No CGWindowID — falling back to full-screen capture"
+        screencapture -x "${outfile}"
+        info "Saved (fallback): ${outfile}"
+        return
+    fi
 
-    local x y x2 y2 w h
-    x=$(echo "${bounds}" | awk '{print $1}')
-    y=$(echo "${bounds}" | awk '{print $2}')
-    x2=$(echo "${bounds}" | awk '{print $3}')
-    y2=$(echo "${bounds}" | awk '{print $4}')
-    w=$(( x2 - x - margin * 2 ))
-    h=$(( y2 - y - margin * 2 ))
-    x=$(( x + margin ))
-    y=$(( y + margin ))
-
-    screencapture -x -R "${x},${y},${w},${h}" "${outfile}"
+    screencapture -l "${cg_id}" -x "${outfile}"
     info "Saved: ${outfile}"
 }
 
@@ -207,27 +217,33 @@ capture_window() {
 #   Pane 4 (bottom-right) thinking  infra-tools
 SCENARIOS=(editing testing building thinking)
 
-# ── window size: maximize for a clean screenshot ──────────────────────────────
+# ── window sizing ─────────────────────────────────────────────────────────────
 
-maximize_window() {
+# Set window to a nice fixed size that keeps macOS chrome visible
+# (titlebar, rounded corners, drop shadow) for clean transparent screenshots.
+resize_window() {
     local win_id="$1"
-    # Get screen work area (excludes Dock and menu bar), then set window to fill it.
-    # Falls back to a large fixed size if the screen query fails.
     local screen_bounds
     screen_bounds=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null || echo "0 25 1440 900")
-    # Finder returns comma-separated: "0, 25, 1440, 900"  →  normalize to spaces
     screen_bounds="${screen_bounds//,/ }"
-    local sx sy sx2 sy2
+    local sx sy sx2 sy2 sw sh ww wh wx wy wx2 wy2
     sx=$(echo "${screen_bounds}"  | awk '{print $1}')
     sy=$(echo "${screen_bounds}"  | awk '{print $2}')
     sx2=$(echo "${screen_bounds}" | awk '{print $3}')
     sy2=$(echo "${screen_bounds}" | awk '{print $4}')
-    # Ensure we don't go under the macOS menu bar (≈25px at top)
     [[ ${sy} -lt 25 ]] && sy=25
+    sw=$(( sx2 - sx ))
+    sh=$(( sy2 - sy ))
+    ww=$(( sw * 90 / 100 ))
+    wh=$(( sh * 86 / 100 ))
+    wx=$(( sx + (sw - ww) / 2 ))
+    wy=$(( sy + (sh - wh) / 4 ))
+    wx2=$(( wx + ww ))
+    wy2=$(( wy + wh ))
     osascript << APPLESCRIPT 2>/dev/null || true
 tell application "iTerm2"
     set theWin to first window whose id is ${win_id}
-    set bounds of theWin to {${sx}, ${sy}, ${sx2}, ${sy2}}
+    set bounds of theWin to {${wx}, ${wy}, ${wx2}, ${wy2}}
 end tell
 APPLESCRIPT
     sleep 0.4
@@ -240,8 +256,11 @@ if $DO_BEFORE; then
 
     WIN_BEFORE=$(iterm_create_2x2)
     info "Window ID: ${WIN_BEFORE}"
-    maximize_window "${WIN_BEFORE}"
-    sleep 0.6
+    resize_window "${WIN_BEFORE}"
+    # Grab CGWindowID now — window is frontmost right after creation.
+    CG_BEFORE=$(get_cg_window_id) || CG_BEFORE=""
+    info "CGWindowID: ${CG_BEFORE}"
+    sleep 0.4
 
     # Dismiss any shell prompts and start fake TUIs
     local_pane=1
@@ -269,7 +288,7 @@ if $DO_BEFORE; then
     iterm_focus "${WIN_BEFORE}"
     sleep 0.3
 
-    capture_window "${WIN_BEFORE}" "${SHOTS_DIR}/before.png"
+    capture_window "${CG_BEFORE}" "${SHOTS_DIR}/before.png"
 
     info "Closing BEFORE window..."
     iterm_close "${WIN_BEFORE}"
@@ -283,8 +302,10 @@ if $DO_AFTER; then
 
     WIN_AFTER=$(iterm_create_2x2)
     info "Window ID: ${WIN_AFTER}"
-    maximize_window "${WIN_AFTER}"
-    sleep 0.6
+    resize_window "${WIN_AFTER}"
+    CG_AFTER=$(get_cg_window_id) || CG_AFTER=""
+    info "CGWindowID: ${CG_AFTER}"
+    sleep 0.4
 
     local_pane=1
     for scenario in "${SCENARIOS[@]}"; do
@@ -313,7 +334,7 @@ if $DO_AFTER; then
     iterm_focus "${WIN_AFTER}"
     sleep 0.3
 
-    capture_window "${WIN_AFTER}" "${SHOTS_DIR}/after.png"
+    capture_window "${CG_AFTER}" "${SHOTS_DIR}/after.png"
 
     info "Closing AFTER window..."
     iterm_close "${WIN_AFTER}"

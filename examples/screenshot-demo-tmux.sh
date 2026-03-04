@@ -15,8 +15,9 @@
 #   │ status bar                                                     │
 #   └─────────────────────────────────────────────────────────────────┘
 #
-# BEFORE: no pane-border-status, generic window name, default tmux look.
-# AFTER:  pane-border-status top showing ccp titles on every pane border.
+# BEFORE: pane-border-status on, but generic "project — claude" titles
+#         (what you see without ccp even if you've enabled border status).
+# AFTER:  pane-border-status on, rich ccp titles on every pane border.
 #
 # Output files:
 #   docs/screenshots/tmux-before.png
@@ -25,6 +26,7 @@
 # Requirements:
 #   - tmux (brew install tmux)
 #   - iTerm2 (used as the host terminal for screencapture)
+#   - Python 3 with PyObjC/Quartz (for CGWindowID lookup)
 #   - macOS screencapture (built-in)
 #
 # Usage:
@@ -110,17 +112,6 @@ end tell
 APPLESCRIPT
 }
 
-iterm_window_bounds() {
-    local win_id="$1"
-    osascript << APPLESCRIPT 2>/dev/null
-tell application "iTerm2"
-    set theWin to first window whose id is ${win_id}
-    set b to bounds of theWin
-    return ((item 1 of b) as text) & " " & ((item 2 of b) as text) & " " & ((item 3 of b) as text) & " " & ((item 4 of b) as text)
-end tell
-APPLESCRIPT
-}
-
 iterm_focus() {
     local win_id="$1"
     osascript << APPLESCRIPT 2>/dev/null || true
@@ -141,48 +132,76 @@ end tell
 APPLESCRIPT
 }
 
-maximize_window() {
+# Set window to a nice fixed size that shows macOS chrome (titlebar, rounded
+# corners, shadow) — required for clean transparent screenshots.
+resize_window() {
     local win_id="$1"
     local screen_bounds
     screen_bounds=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null || echo "0 25 1440 900")
     screen_bounds="${screen_bounds//,/ }"
-    local sx sy sx2 sy2
+    local sx sy sx2 sy2 sw sh ww wh wx wy
     sx=$(echo "${screen_bounds}"  | awk '{print $1}')
     sy=$(echo "${screen_bounds}"  | awk '{print $2}')
     sx2=$(echo "${screen_bounds}" | awk '{print $3}')
     sy2=$(echo "${screen_bounds}" | awk '{print $4}')
-    [[ ${sy} -lt 25 ]] && sy=25
+    sw=$(( sx2 - sx ))
+    sh=$(( sy2 - sy ))
+    # 90% of screen width, 86% of height — leaves visible macOS drop shadow
+    ww=$(( sw * 90 / 100 ))
+    wh=$(( sh * 86 / 100 ))
+    # Center horizontally; sit slightly above vertical center
+    wx=$(( sx + (sw - ww) / 2 ))
+    wy=$(( sy + (sh - wh) / 4 ))
+    local wx2=$(( wx + ww ))
+    local wy2=$(( wy + wh ))
     osascript << APPLESCRIPT 2>/dev/null || true
 tell application "iTerm2"
     set theWin to first window whose id is ${win_id}
-    set bounds of theWin to {${sx}, ${sy}, ${sx2}, ${sy2}}
+    set bounds of theWin to {${wx}, ${wy}, ${wx2}, ${wy2}}
 end tell
 APPLESCRIPT
     sleep 0.4
 }
 
+# Get the CoreGraphics window ID of the frontmost iTerm2 window.
+# CGWindowListCopyWindowInfo returns windows in front-to-back order, so the
+# first iTerm2 layer-0 window is the one currently in focus.
+# Call this immediately after resize_window while the new window is still front.
+get_cg_window_id() {
+    python3 - << 'PY' 2>/dev/null
+import Quartz
+wins = Quartz.CGWindowListCopyWindowInfo(
+    Quartz.kCGWindowListOptionOnScreenOnly,
+    Quartz.kCGNullWindowID
+)
+for w in wins:
+    if (w.get("kCGWindowOwnerName") == "iTerm2"
+            and w.get("kCGWindowLayer", 1) == 0
+            and w.get("kCGWindowAlpha", 0.0) > 0):
+        print(w["kCGWindowNumber"])
+        break
+PY
+}
+
+# Capture an iTerm2 window using screencapture -l (window ID mode).
+# cg_id must be obtained right after the window is created/focused — not at
+# capture time — because focus may have returned to the script's own terminal.
+# This produces a PNG with transparent background, rounded corners, and
+# macOS drop shadow — the same output as Shottr's window capture mode.
 capture_window() {
-    local win_id="$1"
+    local cg_id="$1"    # CoreGraphics window ID (from get_cg_window_id)
     local outfile="$2"
-    local margin="${3:-8}"
 
-    local bounds
-    bounds=$(iterm_window_bounds "${win_id}") || {
-        warn "Could not get window bounds for ${win_id}"
-        return 1
-    }
+    if [[ -z "${cg_id}" ]]; then
+        warn "No CGWindowID — falling back to full-screen capture"
+        screencapture -x "${outfile}"
+        info "Saved (fallback): ${outfile}"
+        return
+    fi
 
-    local x y x2 y2 w h
-    x=$(echo "${bounds}"  | awk '{print $1}')
-    y=$(echo "${bounds}"  | awk '{print $2}')
-    x2=$(echo "${bounds}" | awk '{print $3}')
-    y2=$(echo "${bounds}" | awk '{print $4}')
-    w=$(( x2 - x - margin * 2 ))
-    h=$(( y2 - y - margin * 2 ))
-    x=$(( x + margin ))
-    y=$(( y + margin ))
-
-    screencapture -x -R "${x},${y},${w},${h}" "${outfile}"
+    # -l: capture specific window with shadow + transparency
+    # -x: suppress camera shutter sound
+    screencapture -l "${cg_id}" -x "${outfile}"
     info "Saved: ${outfile}"
 }
 
@@ -219,23 +238,26 @@ tmux_setup() {
     tmux set -t "${SESSION}" window-status-format          " #I:#W "
     tmux set -t "${SESSION}" window-status-current-format  "#[bold,fg=colour255] #I:#W "
 
-    # Pane borders
-    tmux set -t "${SESSION}" pane-border-style        "fg=colour238"
-    tmux set -t "${SESSION}" pane-active-border-style "fg=colour69"
+    # Pane borders — bg=colour234 ensures the title row is visually distinct
+    # even for panes at the outer terminal edge (no border line above them).
+    tmux set -t "${SESSION}" pane-border-style        "bg=colour234,fg=colour238"
+    tmux set -t "${SESSION}" pane-active-border-style "bg=colour234,fg=colour69"
+
+    # pane-border-status is ON in both before and after modes — the comparison
+    # is about what appears in the titles, not whether titles are shown at all.
+    tmux set -t "${SESSION}" pane-border-status top
+    tmux set -t "${SESSION}" automatic-rename off
 
     if [[ "${title_mode}" == "after" ]]; then
-        # Show per-pane title in the border (the whole point of ccp)
-        tmux set -t "${SESSION}" pane-border-status top
-        # Title format: "project (branch) | task | status"
+        # Rich ccp title format: "project (branch) | task | status"
         # Source of truth: lib/title.sh:format_title_prefix + lib/hook_runner.sh status strings
-        # If ccp's title format changes, update these strings to match.
         tmux set -t "${SESSION}" pane-border-format \
-            "#[fg=colour111,bold] #{pane_title} #[nobold,fg=colour238]"
-        tmux set -t "${SESSION}" automatic-rename off
+            "#[bg=colour234,fg=colour111,bold] #{pane_title} #[nobold,fg=colour238]"
     else
-        # "before" — vanilla tmux, no per-pane titles visible, auto window naming
-        tmux set -t "${SESSION}" pane-border-status off
-        tmux set -t "${SESSION}" automatic-rename on
+        # "before" — border status on, but generic titles (no ccp).
+        # Dimmer format to emphasise how little info you get without ccp.
+        tmux set -t "${SESSION}" pane-border-format \
+            "#[bg=colour234,fg=colour240] #{pane_title} "
     fi
 
     # ── launch fake TUIs ───────────────────────────────────────────────────────
@@ -250,25 +272,37 @@ tmux_setup() {
     info "Waiting for TUIs to render (3s)..."
     sleep 3
 
-    # ── set per-pane titles (after mode only) ──────────────────────────────────
+    # ── set per-pane titles ────────────────────────────────────────────────────
     if [[ "${title_mode}" == "after" ]]; then
+        # Rich ccp titles
         tmux select-pane -t "${SESSION}:0.0" -T "auth-service (feat/oauth2) | Fix JWT expiry check | ✏️ Editing"
         tmux select-pane -t "${SESSION}:0.1" -T "dashboard-ui (fix/layout-shift) | Audit component tests | 🧪 Testing"
         tmux select-pane -t "${SESSION}:0.2" -T "data-pipeline (feat/embeddings) | Fix TypeScript errors | 🔨 Building"
+    else
+        # Generic titles — what you see when pane-border-status is on but ccp
+        # is not running (Claude Code sets no pane title by default).
+        tmux select-pane -t "${SESSION}:0.0" -T "auth-service — claude"
+        tmux select-pane -t "${SESSION}:0.1" -T "dashboard-ui — claude"
+        tmux select-pane -t "${SESSION}:0.2" -T "data-pipeline — claude"
     fi
 }
 
 # ── BEFORE screenshot ─────────────────────────────────────────────────────────
 
 if $DO_BEFORE; then
-    heading "Creating BEFORE tmux screenshot (plain tmux, no ccp)"
+    heading "Creating BEFORE tmux screenshot (border status on, generic titles)"
 
     tmux_setup "before"
     info "Session ready: ${SESSION}"
 
     WIN=$(iterm_create_single)
     info "iTerm2 window ID: ${WIN}"
-    maximize_window "${WIN}"
+    resize_window "${WIN}"
+    # Grab CGWindowID now — the new window is frontmost right after creation.
+    # Do NOT wait until capture time: running the script may return focus to
+    # this terminal and get_cg_window_id() would return the wrong window.
+    CG_WIN=$(get_cg_window_id) || CG_WIN=""
+    info "CGWindowID: ${CG_WIN}"
     sleep 0.4
 
     # Attach to the tmux session; tmux will resize to fill the iTerm2 window
@@ -276,9 +310,9 @@ if $DO_BEFORE; then
     sleep 1.8   # let tmux attach + redraw
 
     iterm_focus "${WIN}"
-    sleep 0.3
+    sleep 0.4
 
-    capture_window "${WIN}" "${SHOTS_DIR}/tmux-before.png"
+    capture_window "${CG_WIN}" "${SHOTS_DIR}/tmux-before.png"
 
     info "Detaching and cleaning up..."
     tmux kill-session -t "${SESSION}" 2>/dev/null || true
@@ -296,16 +330,27 @@ if $DO_AFTER; then
 
     WIN=$(iterm_create_single)
     info "iTerm2 window ID: ${WIN}"
-    maximize_window "${WIN}"
+    resize_window "${WIN}"
+    CG_WIN=$(get_cg_window_id) || CG_WIN=""
+    info "CGWindowID: ${CG_WIN}"
     sleep 0.4
 
     iterm_send "${WIN}" "tmux attach-session -t ${SESSION}"
     sleep 1.8
 
-    iterm_focus "${WIN}"
+    # Re-apply pane titles after attach — the fake TUI's hold loop sends OSC 1
+    # every 2s which in tmux 3.0+ can update #{pane_title}, potentially
+    # overwriting our select-pane -T calls from tmux_setup.  Re-stamp here
+    # right before the screenshot to guarantee the correct titles are shown.
+    tmux select-pane -t "${SESSION}:0.0" -T "auth-service (feat/oauth2) | Fix JWT expiry check | ✏️ Editing"
+    tmux select-pane -t "${SESSION}:0.1" -T "dashboard-ui (fix/layout-shift) | Audit component tests | 🧪 Testing"
+    tmux select-pane -t "${SESSION}:0.2" -T "data-pipeline (feat/embeddings) | Fix TypeScript errors | 🔨 Building"
     sleep 0.3
 
-    capture_window "${WIN}" "${SHOTS_DIR}/tmux-after.png"
+    iterm_focus "${WIN}"
+    sleep 0.4
+
+    capture_window "${CG_WIN}" "${SHOTS_DIR}/tmux-after.png"
 
     info "Detaching and cleaning up..."
     tmux kill-session -t "${SESSION}" 2>/dev/null || true
