@@ -21,6 +21,9 @@ export STATE_DIR SESSION_FILE
 export CCP_DISABLE_PROMPT_DISTILL=1
 echo '[]' > "${SESSION_FILE}"
 
+# Avoid invoking the Claude CLI during tests.
+export CCP_DISABLE_SUMMARY=1
+
 # ── Test framework ────────────────────────────────────────────────────────────
 
 TESTS_RUN=0

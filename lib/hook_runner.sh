@@ -250,8 +250,8 @@ case "${mode}" in
         [[ -n "${initial}" ]] && atomic_write "${CCP_CONTEXT_FILE}" "${initial}"
 
         # Test hook: skip AI distillation when explicitly disabled.
-        if [[ "${CCP_DISABLE_PROMPT_DISTILL:-}" == "1" ]]; then
-            _dbg "distillation disabled via CCP_DISABLE_PROMPT_DISTILL"
+        if [[ "${CCP_DISABLE_PROMPT_DISTILL:-}" == "1" || -n "${CCP_DISABLE_SUMMARY:-}" ]]; then
+            _dbg "distillation disabled via CCP_DISABLE_PROMPT_DISTILL/CCP_DISABLE_SUMMARY"
             exit 0
         fi
 

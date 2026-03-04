@@ -152,8 +152,6 @@ ccp --feature "OAuth"
 ccp --bug "Login crash"
 ```
 
-See `examples/multi-pane-setup.sh` for an iTerm2 automation script.
-
 ## Tips
 
 - Use `--no-dynamic` when you want a clean, unmoving title (e.g., for screenshots)

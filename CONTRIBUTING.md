@@ -41,13 +41,13 @@ claude-pane-pulse/
 │   └── ccp              # Main executable
 ├── lib/
 │   ├── core.sh          # Shared constants, logging, dependency checks
+│   ├── status.sh        # Shared status helpers + spinner frames
 │   ├── title.sh         # Terminal title management
 │   ├── session.sh       # Session persistence (jq-backed)
 │   └── monitor.sh       # Dynamic monitoring, status detection, animation
 ├── docs/                # Documentation
 ├── tests/
 │   └── test-suite.sh    # Test suite (bash)
-├── examples/            # Example scripts
 ├── .github/             # CI, issue templates, PR template
 ├── install.sh           # Installer
 ├── uninstall.sh         # Uninstaller

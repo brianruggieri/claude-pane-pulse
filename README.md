@@ -8,16 +8,6 @@
 
 **C**laude **C**ode **P**ane-Pulse (`ccp`) automatically updates your terminal pane titles to show real-time status of your Claude Code sessions — building, testing, pushing, and more — so you always know what each agent is working on at a glance.
 
-![claude-pane-pulse demo](demo-assets/hero-animated.gif)
-
-## Before & After
-
-| Without `ccp` | With `ccp` |
-|:---:|:---:|
-| ![Before: all panes show "bash"](demo-assets/screenshot-before.png) | ![After: dynamic status in each pane](demo-assets/screenshot-after.png) |
-
-Every pane shows "bash". Hard to track which session is testing, which one errored. → Each pane title updates in real time: `PR #89 — Fix auth · ✅ Tests passed`.
-
 ## ✨ Features
 
 - **🎬 Animated Status Updates** - Building..., Testing..., Pushing... with live progress dots
@@ -149,8 +139,6 @@ Verbose-only examples: `🚀 Session started`, `🧠 Compacting`, `🤖 Subagent
 ## 🎯 Multi-Pane Workflow
 
 Perfect for running multiple Claude Code instances:
-
-![4-pane workflow with dynamic titles](demo-assets/screenshot-after.png)
 
 Launch multiple sessions:
 ```bash
