@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`·✻✽✶✳✢✳✶✽✻`) prepended to the title string; 0.15s/frame on bash 4+, 1s on bash 3.2/tmux.
 - **Title format**: `<spinner> <project> (<branch>) | <task-summary> | <status>`
 - **Session tracking** — `jq`-backed session persistence in
-  `~/.config/claude-pane-pulse/sessions.json`; `--list` to view active sessions.
+  `~/.config/claude-code-pulse/sessions.json`; `--list` to view active sessions.
 - **`--goto TITLE`** — resume a previous session by jumping to its saved working directory.
 - **Welcome status** — on startup shows `👋 Welcome back, <FirstName>` (from
   `git config user.name`, fallback `$USER`) until the first user prompt fires.
@@ -63,4 +63,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SECURITY.md** — responsible disclosure policy.
 - **Issue templates** (bug report + feature request) and PR template.
 
-[1.0.0]: https://github.com/brianruggieri/claude-pane-pulse/releases/tag/v1.0.0
+[1.0.0]: https://github.com/brianruggieri/claude-code-pulse/releases/tag/v1.0.0
