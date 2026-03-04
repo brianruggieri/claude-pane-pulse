@@ -76,7 +76,8 @@ printf 'PASS tests/math.test.js\r\n'
 printf 'PASS tests/auth.test.js\r\n'
 printf '3 tests passed in 0.9s\r\n'
 fire_post_hook "Bash" "npm test" "3 tests passed in 0.9s"
-sleep_step
+# Allow the 1-second updater poll to observe Tests passed before git commit fires.
+sleep 1.2
 
 # ── Phase 5: Git commit ────────────────────────────────────────────────────────
 printf 'Tests pass. Committing the fix.\r\n'
