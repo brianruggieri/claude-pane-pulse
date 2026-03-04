@@ -299,6 +299,9 @@ if $DO_AFTER; then
     sleep 3
 
     # Lock pane names via AppleScript — bypasses shell auto-title / job name
+    # Title format: "project (branch) | task | status"
+    # Source of truth: lib/title.sh:format_title_prefix + lib/hook_runner.sh status strings
+    # If ccp's title format changes, update these strings to match.
     info "Setting pane names (after)..."
     iterm_set_pane_names "${WIN_AFTER}" \
         "auth-service (feat/oauth2) | Fix JWT expiry check | ✏️  Editing" \
