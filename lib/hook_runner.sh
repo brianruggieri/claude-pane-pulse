@@ -29,7 +29,7 @@ mode="${1:-}"
 _dbg "START path=${PATH} status_file=${CCP_STATUS_FILE:-} context_file=${CCP_CONTEXT_FILE:-}"
 
 # Guard: nothing to do if CCP files are not configured
-if [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" ]]; then
+if [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]]; then
     exit 0
 fi
 
