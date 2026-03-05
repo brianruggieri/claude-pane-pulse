@@ -308,10 +308,10 @@ case "${mode}" in
         ;;
 
     post-tool)
-        # Both status and context files are checked: the inline AI context
-        # summary writes to CCP_CONTEXT_FILE, while status detection writes
-        # to CCP_STATUS_FILE.  Skip only if neither file is configured.
-        [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" ]] && exit 0
+        # All three output files are checked: status detection writes to
+        # CCP_STATUS_FILE, inline AI context writes to CCP_CONTEXT_FILE, and
+        # branch refresh writes to CCP_BRANCH_FILE.  Skip only if none are set.
+        [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]] && exit 0
 
         tool=""
         tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
@@ -344,7 +344,9 @@ case "${mode}" in
             fi
         fi
 
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        # Branch detection runs even without CCP_STATUS_FILE — skip status
+        # detection only, not the entire handler.
+        [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]] && exit 0
 
         status=""
         if [[ "${tool_response}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+passed ]]; then

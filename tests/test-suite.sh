@@ -423,6 +423,16 @@ fi
 
 rm -f "${TMP_BRANCH}"
 
+# post-tool: branch detection fires even when CCP_STATUS_FILE is unset
+# (branch-only usage — verifies the mid-handler guard includes CCP_BRANCH_FILE)
+TMP_BRANCH="${STATE_DIR}/test-branch-only.txt"
+rm -f "${TMP_BRANCH}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git checkout main"},"tool_response":"Switched to branch main"}' \
+    | CCP_BRANCH_FILE="${TMP_BRANCH}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_BRANCH}" 2>/dev/null || true)
+assert_equals "post-tool: branch detection fires without CCP_STATUS_FILE" "${expected_branch}" "${result}"
+rm -f "${TMP_BRANCH}"
+
 # event handler: quiet (default) high-signal coverage
 result=$(echo '{"permission":"needed"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
