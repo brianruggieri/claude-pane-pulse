@@ -34,7 +34,7 @@ my-app (main) | Fix auth bug | ☕ Recharging
 ## Features
 
 - **Auto-title from git**. `ccp` reads the current branch and generates a clean title automatically. `pr/89-fix-auth` becomes `PR #89 - fix auth`, `feature/new-login` becomes `Feature: new login`, and so on.
-- **Live status updates**. The title updates as Claude works. Editing, testing, building, pushing, all of it.
+- **Live status updates**. The title updates as Claude works. Editing, testing, building, pushing, all of it. Branch name refreshes live too — if Claude runs `git checkout`, the title reflects the new branch within one polling cycle.
 - **Idle phrase cycling**. 10 different idle phrases cycle on each conversation turn so you can see at a glance whether a pane just went idle or has been sitting for a while.
 - **Welcome on startup**. Shows `👋 Welcome back, <name>` when you open a pane, before you've typed anything.
 - **Priority-based display**. Errors always show first. Completions (tests passed, committed) immediately override whatever else is showing.

@@ -385,7 +385,7 @@ main() {
 
     # Setup cleanup on exit (ccp_settings_file populated below if dynamic mode)
     ccp_settings_file=""
-    trap 'cleanup_session; cleanup_monitor; teardown_ccp_hooks "${ccp_settings_file}"; rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}"' EXIT
+    trap 'cleanup_session; cleanup_monitor; teardown_ccp_hooks "${ccp_settings_file}"; rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}" "${CCP_BRANCH_FILE:-}"' EXIT
 
     # Set initial title and save session
     set_title "${title}"
@@ -426,6 +426,7 @@ main() {
         # Export hook file paths so monitor and hook_runner.sh can share them
         export CCP_STATUS_FILE="${STATE_DIR}/status.$$.txt"
         export CCP_CONTEXT_FILE="${STATE_DIR}/context.$$.txt"
+        export CCP_BRANCH_FILE="${STATE_DIR}/branch.$$.txt"
         export CCP_HOOK_RUNNER="${LIB_DIR}/hook_runner.sh"
 
         # Export AI context opt-in flag for hook_runner.sh

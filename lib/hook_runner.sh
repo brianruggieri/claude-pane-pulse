@@ -308,10 +308,10 @@ case "${mode}" in
         ;;
 
     post-tool)
-        # Both status and context files are checked: the inline AI context
-        # summary writes to CCP_CONTEXT_FILE, while status detection writes
-        # to CCP_STATUS_FILE.  Skip only if neither file is configured.
-        [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" ]] && exit 0
+        # All three output files are checked: status detection writes to
+        # CCP_STATUS_FILE, inline AI context writes to CCP_CONTEXT_FILE, and
+        # branch refresh writes to CCP_BRANCH_FILE.  Skip only if none are set.
+        [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]] && exit 0
 
         tool=""
         tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
@@ -344,7 +344,9 @@ case "${mode}" in
             fi
         fi
 
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        # Branch detection runs even without CCP_STATUS_FILE — skip status
+        # detection only, not the entire handler.
+        [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]] && exit 0
 
         status=""
         if [[ "${tool_response}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+passed ]]; then
@@ -357,6 +359,17 @@ case "${mode}" in
 
         _dbg "post-tool tool=${tool} status=${status}"
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+
+        # Detect branch-changing commands and update CCP_BRANCH_FILE so the
+        # title monitor can refresh the pane title with the new branch name.
+        if [[ -n "${CCP_BRANCH_FILE:-}" ]] && \
+           [[ "${command_str}" =~ git[[:space:]]+(checkout|switch|branch) ]]; then
+            new_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || true
+            if [[ -n "${new_branch}" ]]; then
+                _dbg "branch change detected: ${new_branch}"
+                atomic_write "${CCP_BRANCH_FILE}" "${new_branch}"
+            fi
+        fi
         ;;
 
     post-tool-failure)

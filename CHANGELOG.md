@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-05
+
+### Added
+- **Live branch name refresh** — the pane title now updates when Claude runs
+  `git checkout`, `git switch`, or `git branch`. Previously the branch shown in the
+  title was captured once at startup and never refreshed. The new `CCP_BRANCH_FILE`
+  state file carries branch updates from `hook_runner.sh` to the title monitor via
+  the same file-signaling pattern used by status and context.
+- **5 new tests** — checkout/switch/branch write detection, non-git no-op,
+  unset `CCP_BRANCH_FILE` no-op.
+
 ## [1.1.0] - 2026-03-05
 
 ### Added
@@ -87,5 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SECURITY.md** — responsible disclosure policy.
 - **Issue templates** (bug report + feature request) and PR template.
 
+[1.2.0]: https://github.com/brianruggieri/claude-code-pulse/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/brianruggieri/claude-code-pulse/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/brianruggieri/claude-code-pulse/releases/tag/v1.0.0
