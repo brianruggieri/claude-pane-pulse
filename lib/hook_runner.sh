@@ -326,14 +326,16 @@ case "${mode}" in
         command_str=""
         command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
 
-        # Inline AI context: detect CCP_TASK_SUMMARY marker echoed by the main
-        # Claude session (injected via --append-system-prompt).  Extract the
-        # summary and write it to the context file.
-        # Only runs when inline strategy is explicitly active — prevents false
-        # matches from grep/cat of files that contain the marker string.
+        # Inline AI context: detect the PID-scoped CCP_TASK_SUMMARY marker
+        # echoed by the main Claude session (injected via --append-system-prompt).
+        # The marker includes the ccp session PID (CCP_SESSION_PID), making it
+        # unique per session.  Source files on disk always contain the generic
+        # template string (without a real PID), so grep/cat of hook_runner.sh
+        # or bin/ccp can never produce a false match.
         if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]] && \
            [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
-           [[ "${tool_response}" =~ CCP_TASK_SUMMARY:(.+) ]]; then
+           [[ -n "${CCP_SESSION_PID:-}" ]] && \
+           [[ "${tool_response}" =~ CCP_TASK_SUMMARY_${CCP_SESSION_PID}:(.+) ]]; then
             _inline_summary="${BASH_REMATCH[1]}"
             _inline_summary=$(printf '%s' "${_inline_summary}" \
                 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' \

@@ -440,6 +440,7 @@ main() {
             CCP_BRANCH_NAME=""
         fi
         export CCP_PROJECT_NAME CCP_BRANCH_NAME
+        export CCP_SESSION_PID=$$
 
         # Write welcome status — shown immediately on startup.
         # Overwritten by the first hook event (UserPromptSubmit → "💭 Thinking").
@@ -459,7 +460,7 @@ main() {
         # is captured by the PostToolUse hook (see hook_runner.sh post-tool).
         if [[ "${enable_ai_context}" = true && "${ai_context_strategy}" == "inline" ]]; then
             local _ccp_inline_prompt
-            _ccp_inline_prompt="[CCP Terminal Title] As your very first action, run a single bash command: echo 'CCP_TASK_SUMMARY:' followed by a 3-5 word title-case summary of the user's task. Example: echo 'CCP_TASK_SUMMARY:Fix JWT Validation Bug'. Do this once, then proceed with your work normally."
+            _ccp_inline_prompt="[CCP Terminal Title] As your very first action, run a single bash command: echo 'CCP_TASK_SUMMARY_$$:' followed by a 3-5 word title-case summary of the user's task. Example: echo 'CCP_TASK_SUMMARY_$$:Fix JWT Validation Bug'. Do this once, then proceed with your work normally."
             claude_args+=("--append-system-prompt" "${_ccp_inline_prompt}")
         fi
 
