@@ -70,7 +70,12 @@ ccp --goto "PR #89"
 ccp -c                                  # resume last conversation
 ccp --model opus "My task"
 ccp --permission-mode bypassPermissions
+
+# AI-summarized task labels in the title (opt-in, uses your subscription)
+ccp --ai-context "Fix the auth bug"
 ```
+
+> See [AI Task Summaries](#ai-task-summaries) for details on the `--ai-context` flag.
 
 ## Installation
 
