@@ -375,6 +375,47 @@ result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"error":"bo
       bash "${LIB_DIR}/hook_runner.sh" post-tool-failure && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "post-tool-failure: generic failure → 🐛 Error" "🐛 Error" "${result}"
 
+# post-tool: branch change detection writes CCP_BRANCH_FILE
+TMP_BRANCH="${STATE_DIR}/test-branch.txt"
+rm -f "${TMP_BRANCH}"
+
+# git checkout triggers branch file write (uses current repo's HEAD)
+expected_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git checkout feature/new"},"tool_response":"Switched to branch feature/new"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_BRANCH_FILE="${TMP_BRANCH}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_BRANCH}" 2>/dev/null || true)
+assert_equals "post-tool: git checkout writes branch file" "${expected_branch}" "${result}"
+
+rm -f "${TMP_BRANCH}"
+# git switch triggers branch file write
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git switch main"},"tool_response":"Switched to branch main"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_BRANCH_FILE="${TMP_BRANCH}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_BRANCH}" 2>/dev/null || true)
+assert_equals "post-tool: git switch writes branch file" "${expected_branch}" "${result}"
+
+rm -f "${TMP_BRANCH}"
+# git branch (create) triggers branch file write
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git branch new-feature"},"tool_response":""}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_BRANCH_FILE="${TMP_BRANCH}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_BRANCH}" 2>/dev/null || true)
+assert_equals "post-tool: git branch writes branch file" "${expected_branch}" "${result}"
+
+rm -f "${TMP_BRANCH}"
+# Non-git command does not write branch file
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"3 tests passed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_BRANCH_FILE="${TMP_BRANCH}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_BRANCH}" 2>/dev/null || true)
+assert_empty "post-tool: non-git command does not write branch file" "$(cat "${TMP_BRANCH}" 2>/dev/null || true)"
+
+rm -f "${TMP_BRANCH}"
+# Without CCP_BRANCH_FILE set, git checkout does not write anything
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git checkout main"},"tool_response":"Switched to branch main"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool)
+assert_empty "post-tool: no CCP_BRANCH_FILE → no branch file written" "$(cat "${TMP_BRANCH}" 2>/dev/null || true)"
+
+rm -f "${TMP_BRANCH}"
+
 # event handler: quiet (default) high-signal coverage
 result=$(echo '{"permission":"needed"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \

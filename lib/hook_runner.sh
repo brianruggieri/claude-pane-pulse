@@ -357,6 +357,17 @@ case "${mode}" in
 
         _dbg "post-tool tool=${tool} status=${status}"
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+
+        # Detect branch-changing commands and update CCP_BRANCH_FILE so the
+        # title monitor can refresh the pane title with the new branch name.
+        if [[ -n "${CCP_BRANCH_FILE:-}" ]] && \
+           [[ "${command_str}" =~ git[[:space:]]+(checkout|switch|branch) ]]; then
+            new_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || true
+            if [[ -n "${new_branch}" ]]; then
+                _dbg "branch change detected: ${new_branch}"
+                atomic_write "${CCP_BRANCH_FILE}" "${new_branch}"
+            fi
+        fi
         ;;
 
     post-tool-failure)

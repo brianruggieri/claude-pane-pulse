@@ -76,6 +76,7 @@ title_updater() {
         local last_hook_check=$SECONDS
         local status_file="${CCP_STATUS_FILE:-}"
         local context_file="${CCP_CONTEXT_FILE:-}"
+        local branch_file="${CCP_BRANCH_FILE:-}"
 
         # Idle phrase cycling — advances to next phrase each time Claude goes idle
         local _idle_idx=0
@@ -95,6 +96,7 @@ title_updater() {
 
         local title_prefix
         title_prefix=$(format_title_prefix "${CCP_PROJECT_NAME:-}" "${CCP_BRANCH_NAME:-}")
+        local current_branch="${CCP_BRANCH_NAME:-}"
 
         # Assert base title once before Claude Code starts.
         update_title_with_context "${base_title}" ""
@@ -138,6 +140,16 @@ title_updater() {
                             | sed "s/ (${CCP_PROJECT_NAME})[^,]*,\{0,1\}[[:space:]]*//g" \
                             | sed 's/^[[:space:]]*//' \
                             | sed 's/[[:space:]]*$//')
+                    fi
+                fi
+
+                # Check for branch changes written by hook_runner.sh
+                if [[ -n "${branch_file}" && -f "${branch_file}" ]]; then
+                    local new_branch=""
+                    new_branch=$(< "${branch_file}") || new_branch=""
+                    if [[ -n "${new_branch}" && "${new_branch}" != "${current_branch}" ]]; then
+                        current_branch="${new_branch}"
+                        title_prefix=$(format_title_prefix "${CCP_PROJECT_NAME:-}" "${current_branch}")
                     fi
                 fi
             fi
