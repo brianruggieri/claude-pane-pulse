@@ -321,7 +321,7 @@ result=$(echo '{"prompt":"Fix the login bug in the auth module"}' \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_contains "user-prompt writes context"        "Fix the login bug"  "${result}"
 result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_empty "user-prompt does not touch status file (shows idle phrase)" "${result}"
+assert_equals "user-prompt writes 💭 Thinking to status file" "💭 Thinking" "${result}"
 
 # user-prompt: no trailing newline (exactly how Claude Code sends hook payloads)
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"

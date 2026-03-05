@@ -235,11 +235,13 @@ case "${mode}" in
         [[ -z "${raw_prompt}" ]] && exit 0
         _dbg "raw_prompt=${raw_prompt}"
 
-        # Clear any stale status (e.g. the startup "Welcome back" message) so
-        # the monitor shows idle phrases until a tool-specific status is emitted.
+        # Write 💭 Thinking immediately so title transitions from any stale status
+        # (e.g. "Welcome back", "✅ Tests passed") as soon as the user submits.
+        # We write rather than clear so there is never an empty-status window that
+        # races with the async PreToolUse hook that fires right after this one.
         if [[ -n "${CCP_STATUS_FILE:-}" ]]; then
-            : > "${CCP_STATUS_FILE}" 2>/dev/null || true
-            _dbg "cleared status file on user-prompt"
+            atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
+            _dbg "wrote Thinking to status file on user-prompt"
         fi
 
         # Write first-5-words placeholder immediately so the title updates at once
