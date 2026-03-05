@@ -57,3 +57,4 @@ PROJECT_SUMMARY.md
 *.zip
 .claude-flow/
 .claude/
+docs/screenshots/gif-frames
