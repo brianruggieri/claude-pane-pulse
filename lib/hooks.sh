@@ -131,7 +131,7 @@ setup_ccp_hooks() {
          ]) |
          .hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + [
              {"_ccp_pid": $pid, "hooks": [
-                 {"type": "command", "command": ("bash \"" + $runner + "\" user-prompt"), "timeout": 5000, "async": true}
+                 {"type": "command", "command": ("bash \"" + $runner + "\" user-prompt"), "timeout": 5000, "async": false}
              ]}
          ]) |
          .hooks.Stop = ((.hooks.Stop // []) + [
