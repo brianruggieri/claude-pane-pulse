@@ -40,7 +40,7 @@ my-app (main) | Fix auth bug | ☕ Recharging
 - **Priority-based display**. Errors always show first. Completions (tests passed, committed) immediately override whatever else is showing.
 - **Hook-based**. Uses Claude Code's own hook events for status. No output parsing, no regex, just structured JSON.
 - **Session tracking**. Save and re-open sessions by title with `--goto`.
-- **AI task summaries**. `--ai-context` sends your prompt to claude-haiku and shows a 3-5 word label in the title. Opt-in, uses your subscription.
+- **AI task summaries**. `--ai-context` refines your prompt into a clean 3-5 word label shown in the title. Two strategies: `haiku` (separate claude-haiku call, fully invisible) or `inline` (zero extra API calls, uses the already-outgoing session). Both are opt-in.
 - **Tested on iTerm2, Terminal.app, and tmux**. Detection logic for WezTerm, Ghostty, and Kitty is included but unverified.
 - **Full Claude passthrough**. Every Claude Code flag works exactly as expected.
 
@@ -73,9 +73,12 @@ ccp --permission-mode bypassPermissions
 
 # AI-summarized task labels in the title (opt-in, uses your subscription)
 ccp --ai-context "Fix the auth bug"
+
+# Inline strategy — zero extra API calls (one echo visible per session)
+ccp --ai-context --ai-context-strategy inline "Fix the auth bug"
 ```
 
-> See [AI Task Summaries](#ai-task-summaries) for details on the `--ai-context` flag.
+> See [AI Task Summaries](#ai-task-summaries) for the `--ai-context` flag and strategy options.
 
 ## Installation
 
@@ -221,16 +224,30 @@ Precedence: `--status-profile` flag > `CCP_STATUS_PROFILE` env var > `quiet` def
 
 ## AI Task Summaries
 
-With `--ai-context`, ccp calls claude-haiku after each prompt and distills it to a 3-5 word label shown in the title. Without it, the first words of your prompt show as-is.
+With `--ai-context`, ccp distills your prompt into a clean 3-5 word label shown in the title. Without it, the first words of your prompt show as-is.
+
+Two strategies are available:
+
+| | `haiku` (default) | `inline` |
+|---|---|---|
+| Extra API calls | 1 per prompt | 0 |
+| Visible to user | No | One `echo` per session |
+| Summary context | Prompt text only | Full codebase + history |
+| Reliability | High | Model-dependent |
 
 ```bash
+# Haiku strategy (default) — invisible, uses your subscription
 ccp --ai-context "PR #89 - Fix auth"
 
-# Always on, via environment variable
+# Inline strategy — zero extra API calls, one echo visible per session
+ccp --ai-context --ai-context-strategy inline "PR #89 - Fix auth"
+
+# Always on, via environment variables
 export CCP_ENABLE_AI_CONTEXT=true
+export CCP_AI_CONTEXT_STRATEGY=inline   # optional, default is haiku
 ```
 
-This uses your Claude subscription. See [docs/ai-context.md](docs/ai-context.md) for details.
+See [docs/ai-context.md](docs/ai-context.md) for the full trade-off analysis.
 
 ## Claude Flag Passthrough
 
@@ -341,7 +358,8 @@ my-app (bug/login-crash)     | login bug  | ⬆️ Pushing
 | `--auto-title` | Auto-detect title from git branch (this is the default) |
 | `--no-dynamic` | Static title only, no live updates |
 | `--status-profile quiet\|verbose` | Which events to surface (default: `quiet`) |
-| `--ai-context` | Summarize prompts via claude-haiku (opt-in, uses your subscription) |
+| `--ai-context` | Summarize prompts into a 3-5 word title label (opt-in) |
+| `--ai-context-strategy haiku\|inline` | Summary strategy: `haiku` (default, invisible) or `inline` (zero extra API calls) |
 | `--goto TITLE` | Re-open a previous session by title |
 | `--list`, `-l` | List active ccp sessions |
 | `--help`, `-h` | Show help |
@@ -355,6 +373,7 @@ my-app (bug/login-crash)     | login bug  | ⬆️ Pushing
 |----------|---------|-------------|
 | `CCP_STATUS_PROFILE` | `quiet` | Default status profile |
 | `CCP_ENABLE_AI_CONTEXT` | `false` | Always-on AI prompt summarization |
+| `CCP_AI_CONTEXT_STRATEGY` | `haiku` | Summary strategy: `haiku` or `inline` |
 
 ## Documentation
 

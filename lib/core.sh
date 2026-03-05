@@ -6,7 +6,7 @@
 _CCP_CORE_SOURCED=1
 
 # shellcheck disable=SC2034
-VERSION="1.0.0"
+VERSION="1.1.0"
 # shellcheck disable=SC2034
 SCRIPT_NAME="ccp"
 STATE_DIR="${STATE_DIR:-${HOME}/.config/claude-code-pulse}"

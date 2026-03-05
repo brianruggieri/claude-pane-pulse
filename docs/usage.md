@@ -124,7 +124,8 @@ Any unrecognized `-*` flag is also forwarded, so you can pass new Claude flags w
 | `--auto-title` | Detect title from git branch (default behavior) |
 | `--no-dynamic` | Static title only — disable monitoring |
 | `--status-profile quiet\|verbose` | Status surface (default: quiet) |
-| `--ai-context` | Summarize prompts via claude-haiku (opt-in, uses your subscription) |
+| `--ai-context` | Summarize prompts into a 3-5 word title label (opt-in) |
+| `--ai-context-strategy haiku\|inline` | Summary strategy: `haiku` (default, invisible) or `inline` (zero extra API calls) |
 | `--goto TITLE` | Re-open previous session by title search |
 | `--list`, `-l` | List all active ccp sessions |
 | `--help`, `-h` | Show help |
