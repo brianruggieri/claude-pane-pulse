@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-03-05
+
+### Added
+- **`--ai-context-strategy haiku|inline`** — choose how AI task summaries are generated.
+  - `haiku` (default): fires a detached `claude-haiku` call in the background. Fully
+    invisible to the user. Uses your subscription (one Haiku call per prompt).
+  - `inline`: piggybacks on the already-outgoing Claude session via `--append-system-prompt`.
+    Zero extra API calls, zero extra subscription cost. Claude emits one `echo` as its first
+    tool use per session — a visible but minor trade-off for cost-conscious users.
+- **`CCP_AI_CONTEXT_STRATEGY`** env var — set default strategy in your shell profile
+  (`haiku` or `inline`). CLI flag takes precedence.
+- **12 new tests** — marker extraction, whitespace/quote handling, strategy gating (positive
+  and negative cases), CLI validation for both strategies.
+
+### Fixed
+- Inline summary extraction is now correctly gated on `CCP_AI_CONTEXT_STRATEGY=inline`.
+  Previously the `CCP_TASK_SUMMARY:` marker was detected unconditionally, meaning a
+  `grep` or `cat` of any file containing that string could silently overwrite the title.
+
+### Docs
+- `docs/ai-context.md` — per-strategy sections for cost, privacy, and data flow.
+- `docs/inline-context-spec.md` — full architecture spec, data flow diagram, failure modes,
+  and trade-off matrix.
+
 ## [1.0.0] - 2026-03-04
 
 ### Added
@@ -55,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (avoids 7 subprocess forks/sec).
 - **`install.sh`** — installs to `~/.local/share/ccp/`, symlinks `~/bin/ccp`.
 - **`uninstall.sh`** — clean removal with optional session data purge.
-- **Comprehensive test suite** — 125 tests covering spinner frames, title escapes,
+- **Comprehensive test suite** — 114 tests covering spinner frames, title escapes,
   session lifecycle, hook injection/teardown, status priority, and event routing.
 - **GitHub Actions CI** — shellcheck + unit tests + e2e + install smoke test.
 - **Docs** — `docs/` directory with `usage.md`, `hooks.md`, `dynamic-titles.md`,
@@ -63,4 +87,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SECURITY.md** — responsible disclosure policy.
 - **Issue templates** (bug report + feature request) and PR template.
 
+[1.1.0]: https://github.com/brianruggieri/claude-code-pulse/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/brianruggieri/claude-code-pulse/releases/tag/v1.0.0
