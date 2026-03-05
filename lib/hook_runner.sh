@@ -235,11 +235,13 @@ case "${mode}" in
         [[ -z "${raw_prompt}" ]] && exit 0
         _dbg "raw_prompt=${raw_prompt}"
 
-        # Clear any stale status (e.g. the startup "Welcome back" message) so
-        # the monitor shows idle phrases until a tool-specific status is emitted.
+        # Write 💭 Thinking immediately so title transitions from any stale status
+        # (e.g. "Welcome back", "✅ Tests passed") as soon as the user submits.
+        # We write rather than clear so there is never an empty-status window that
+        # races with the async PreToolUse hook that fires right after this one.
         if [[ -n "${CCP_STATUS_FILE:-}" ]]; then
-            : > "${CCP_STATUS_FILE}" 2>/dev/null || true
-            _dbg "cleared status file on user-prompt"
+            atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
+            _dbg "wrote Thinking to status file on user-prompt"
         fi
 
         # Write first-5-words placeholder immediately so the title updates at once
@@ -317,23 +319,25 @@ case "${mode}" in
         tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
         [[ "${tool}" != "Bash" ]] && exit 0
 
-        # tool_response may be a string or JSON object
+        # tool_response may be a string or JSON object; extract stdout when available
         tool_response=""
         tool_response=$(printf '%s' "${json_input}" | jq -r '
-            .tool_response | if type == "object" then tostring else . end // ""
+            .tool_response | if type == "object" then (.stdout // "" ) else . end // ""
         ' 2>/dev/null) || true
 
         command_str=""
         command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
 
-        # Inline AI context: detect CCP_TASK_SUMMARY marker echoed by the main
-        # Claude session (injected via --append-system-prompt).  Extract the
-        # summary and write it to the context file.
-        # Only runs when inline strategy is explicitly active — prevents false
-        # matches from grep/cat of files that contain the marker string.
+        # Inline AI context: detect the PID-scoped CCP_TASK_SUMMARY marker
+        # echoed by the main Claude session (injected via --append-system-prompt).
+        # The marker includes the ccp session PID (CCP_SESSION_PID), making it
+        # unique per session.  Source files on disk always contain the generic
+        # template string (without a real PID), so grep/cat of hook_runner.sh
+        # or bin/ccp can never produce a false match.
         if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]] && \
            [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
-           [[ "${tool_response}" =~ CCP_TASK_SUMMARY:(.+) ]]; then
+           [[ -n "${CCP_SESSION_PID:-}" ]] && \
+           [[ "${tool_response}" =~ CCP_TASK_SUMMARY_${CCP_SESSION_PID}:(.+) ]]; then
             _inline_summary="${BASH_REMATCH[1]}"
             _inline_summary=$(printf '%s' "${_inline_summary}" \
                 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' \
