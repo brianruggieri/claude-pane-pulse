@@ -317,10 +317,10 @@ case "${mode}" in
         tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
         [[ "${tool}" != "Bash" ]] && exit 0
 
-        # tool_response may be a string or JSON object
+        # tool_response may be a string or JSON object; extract stdout when available
         tool_response=""
         tool_response=$(printf '%s' "${json_input}" | jq -r '
-            .tool_response | if type == "object" then tostring else . end // ""
+            .tool_response | if type == "object" then (.stdout // "" ) else . end // ""
         ' 2>/dev/null) || true
 
         command_str=""
