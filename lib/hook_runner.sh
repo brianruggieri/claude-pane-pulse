@@ -308,6 +308,9 @@ case "${mode}" in
         ;;
 
     post-tool)
+        # Both status and context files are checked: the inline AI context
+        # summary writes to CCP_CONTEXT_FILE, while status detection writes
+        # to CCP_STATUS_FILE.  Skip only if neither file is configured.
         [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" ]] && exit 0
 
         tool=""
