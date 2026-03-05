@@ -595,6 +595,7 @@ TMP_CONTEXT=$(mktemp)
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY:Fix JWT Validation Bug"},"tool_response":"CCP_TASK_SUMMARY:Fix JWT Validation Bug"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline \
       bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_equals "inline: CCP_TASK_SUMMARY extracted" "Fix JWT Validation Bug" "${result}"
 
@@ -602,6 +603,7 @@ assert_equals "inline: CCP_TASK_SUMMARY extracted" "Fix JWT Validation Bug" "${r
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY:  Refactor Auth Module  "},"tool_response":"CCP_TASK_SUMMARY:  Refactor Auth Module  "}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline \
       bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_equals "inline: whitespace around summary trimmed" "Refactor Auth Module" "${result}"
 
@@ -609,14 +611,34 @@ assert_equals "inline: whitespace around summary trimmed" "Refactor Auth Module"
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY:Update Login UI"},"tool_response":"CCP_TASK_SUMMARY:'\''Update Login UI'\''"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline \
       bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_equals "inline: quotes stripped from summary" "Update Login UI" "${result}"
+
+# post-tool: marker is IGNORED when strategy is not inline (prevents accidental overwrites
+# from grep/cat of files that contain the CCP_TASK_SUMMARY string)
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+printf 'existing context' > "${TMP_CONTEXT}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"grep CCP_TASK_SUMMARY lib/hook_runner.sh"},"tool_response":"CCP_TASK_SUMMARY:Do Not Overwrite"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=haiku \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "inline: marker ignored when strategy is haiku" "existing context" "${result}"
+
+# post-tool: marker is IGNORED when AI context is disabled entirely
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+printf 'existing context' > "${TMP_CONTEXT}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY:Do Not Overwrite"},"tool_response":"CCP_TASK_SUMMARY:Do Not Overwrite"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "inline: marker ignored when AI context disabled" "existing context" "${result}"
 
 # post-tool: normal Bash output without marker does NOT touch context file
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
 printf 'existing context' > "${TMP_CONTEXT}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"tool_response":"total 42\ndrwxr-xr-x 5 user staff 160 Jan  1 12:00 ."}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline \
       bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_equals "inline: non-marker Bash output preserves context" "existing context" "${result}"
 
@@ -624,6 +646,7 @@ assert_equals "inline: non-marker Bash output preserves context" "existing conte
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"CCP_TASK_SUMMARY:Fix Tests\n3 tests passed"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline \
       bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "inline: summary + test pass both captured (status)" "✅ Tests passed" "${result}"
 result=$(cat "${TMP_CONTEXT}" 2>/dev/null || true)

@@ -329,7 +329,10 @@ case "${mode}" in
         # Inline AI context: detect CCP_TASK_SUMMARY marker echoed by the main
         # Claude session (injected via --append-system-prompt).  Extract the
         # summary and write it to the context file.
-        if [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
+        # Only runs when inline strategy is explicitly active — prevents false
+        # matches from grep/cat of files that contain the marker string.
+        if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]] && \
+           [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
            [[ "${tool_response}" =~ CCP_TASK_SUMMARY:(.+) ]]; then
             _inline_summary="${BASH_REMATCH[1]}"
             _inline_summary=$(printf '%s' "${_inline_summary}" \
