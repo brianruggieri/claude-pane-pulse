@@ -256,6 +256,14 @@ case "${mode}" in
             exit 0
         fi
 
+        # Inline strategy: the summary is produced by the main Claude session
+        # (via --append-system-prompt injection) and captured in the post-tool
+        # handler.  No separate API call needed — skip the Haiku subprocess.
+        if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]]; then
+            _dbg "AI context strategy=inline — skipping haiku subprocess"
+            exit 0
+        fi
+
         # Background AI distillation — rewrites the context file with a proper
         # 3-5 word semantic summary once the haiku call completes (~1-3s).
         # CCP vars are unset inside the subshell so any hooks fired by the child
@@ -300,7 +308,7 @@ case "${mode}" in
         ;;
 
     post-tool)
-        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" ]] && exit 0
 
         tool=""
         tool=$(printf '%s' "${json_input}" | jq -r '.tool_name // ""' 2>/dev/null) || true
@@ -314,6 +322,23 @@ case "${mode}" in
 
         command_str=""
         command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
+
+        # Inline AI context: detect CCP_TASK_SUMMARY marker echoed by the main
+        # Claude session (injected via --append-system-prompt).  Extract the
+        # summary and write it to the context file.
+        if [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
+           [[ "${tool_response}" =~ CCP_TASK_SUMMARY:(.+) ]]; then
+            _inline_summary="${BASH_REMATCH[1]}"
+            _inline_summary=$(printf '%s' "${_inline_summary}" \
+                | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' \
+                | sed "s/^['\"]//;s/['\"]$//")
+            if [[ -n "${_inline_summary}" ]]; then
+                atomic_write "${CCP_CONTEXT_FILE}" "${_inline_summary}"
+                _dbg "inline-summary: ${_inline_summary}"
+            fi
+        fi
+
+        [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
 
         status=""
         if [[ "${tool_response}" =~ [0-9]+[[:space:]]+(tests?|specs?)[[:space:]]+passed ]]; then

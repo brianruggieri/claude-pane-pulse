@@ -583,6 +583,110 @@ assert_equals "teardown preserves non-CCP hooks" "1" "${remaining}"
 rm -rf "${HOOKS_TMP_DIR}"
 rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
 
+# ── Tests: inline AI context (post-tool CCP_TASK_SUMMARY detection) ───────────
+
+echo ""
+echo "inline AI context (post-tool CCP_TASK_SUMMARY)"
+
+TMP_STATUS=$(mktemp)
+TMP_CONTEXT=$(mktemp)
+
+# post-tool: CCP_TASK_SUMMARY marker in echo output writes to context file
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY:Fix JWT Validation Bug"},"tool_response":"CCP_TASK_SUMMARY:Fix JWT Validation Bug"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "inline: CCP_TASK_SUMMARY extracted" "Fix JWT Validation Bug" "${result}"
+
+# post-tool: marker with surrounding whitespace is trimmed
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY:  Refactor Auth Module  "},"tool_response":"CCP_TASK_SUMMARY:  Refactor Auth Module  "}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "inline: whitespace around summary trimmed" "Refactor Auth Module" "${result}"
+
+# post-tool: marker with quotes is cleaned
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY:Update Login UI"},"tool_response":"CCP_TASK_SUMMARY:'\''Update Login UI'\''"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "inline: quotes stripped from summary" "Update Login UI" "${result}"
+
+# post-tool: normal Bash output without marker does NOT touch context file
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+printf 'existing context' > "${TMP_CONTEXT}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"tool_response":"total 42\ndrwxr-xr-x 5 user staff 160 Jan  1 12:00 ."}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "inline: non-marker Bash output preserves context" "existing context" "${result}"
+
+# post-tool: CCP_TASK_SUMMARY still allows status to be set (both paths work)
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"CCP_TASK_SUMMARY:Fix Tests\n3 tests passed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "inline: summary + test pass both captured (status)" "✅ Tests passed" "${result}"
+result=$(cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_contains "inline: summary + test pass both captured (context)" "Fix Tests" "${result}"
+
+# user-prompt: inline strategy skips Haiku subprocess (just writes first-5-words)
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(echo '{"prompt":"Fix the login bug in the auth module"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_contains "inline: user-prompt still writes first-5-words" "Fix the login bug" "${result}"
+
+# user-prompt: haiku strategy with AI context enabled (no claude binary in PATH)
+# just verify it writes first-5-words and doesn't fail (the background Haiku
+# subprocess will silently fail without claude binary — expected in tests)
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(echo '{"prompt":"Refactor the database layer for performance"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=haiku \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_contains "haiku: user-prompt writes first-5-words" "Refactor the database layer" "${result}"
+
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
+# ── Tests: bin/ccp AI context strategy parsing ────────────────────────────────
+
+echo ""
+echo "bin/ccp --ai-context-strategy"
+
+BIN_CCP="${PROJECT_DIR}/bin/ccp"
+CLI_TMP_DIR=$(mktemp -d)
+CLI_STATE_DIR="${CLI_TMP_DIR}/state"
+mkdir -p "${CLI_STATE_DIR}"
+CLI_SESSION_FILE="${CLI_STATE_DIR}/sessions.json"
+echo '[]' > "${CLI_SESSION_FILE}"
+
+cli_exit=0
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --ai-context --ai-context-strategy inline --no-dynamic "strategy test" \
+    >/dev/null 2>/dev/null || cli_exit=$?
+assert_equals "bin/ccp: --ai-context-strategy inline succeeds" "0" "${cli_exit}"
+
+cli_exit=0
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --ai-context --ai-context-strategy haiku --no-dynamic "strategy test" \
+    >/dev/null 2>/dev/null || cli_exit=$?
+assert_equals "bin/ccp: --ai-context-strategy haiku succeeds" "0" "${cli_exit}"
+
+cli_exit=0
+cli_err="${CLI_TMP_DIR}/invalid-strategy.err"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --ai-context --ai-context-strategy bogus --no-dynamic "strategy test" \
+    >/dev/null 2>"${cli_err}" || cli_exit=$?
+assert_equals "bin/ccp: invalid --ai-context-strategy exits 1" "1" "${cli_exit}"
+assert_contains "bin/ccp: invalid strategy emits clear error" \
+    "Invalid AI context strategy 'bogus'" "$(cat "${cli_err}" 2>/dev/null || true)"
+
+rm -rf "${CLI_TMP_DIR}"
+
 # ── Tests: bin/ccp status profile parsing ─────────────────────────────────────
 
 echo ""

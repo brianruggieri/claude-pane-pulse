@@ -65,6 +65,11 @@ ${BLUE}ccp Options:${NC}
                             Privacy: prompt text is sent to Anthropic to generate
                             the summary. Do not enable if prompts contain secrets.
                             Also: export CCP_ENABLE_AI_CONTEXT=true for always-on
+    --ai-context-strategy MODE
+                            How AI context summaries are generated:
+                              haiku   — separate claude-haiku call (default)
+                              inline  — system prompt injection, zero extra API calls
+                            Also: export CCP_AI_CONTEXT_STRATEGY=inline for always-on
     --goto TITLE            Re-open a previous session by title search
     --list, -l              List all active sessions
     --help, -h              Show this help
@@ -157,6 +162,7 @@ main() {
     local enable_dynamic=true
     local status_profile_cli=""
     local enable_ai_context="${CCP_ENABLE_AI_CONTEXT:-false}"
+    local ai_context_strategy="${CCP_AI_CONTEXT_STRATEGY:-haiku}"
     local claude_args=()
 
     # Initialize state directory
@@ -187,6 +193,15 @@ main() {
                 ;;
             --ai-context)
                 enable_ai_context=true
+                shift
+                ;;
+            --ai-context-strategy)
+                shift
+                if [[ $# -lt 1 ]]; then
+                    log_error "Usage: ${SCRIPT_NAME} --ai-context-strategy haiku|inline"
+                    exit 1
+                fi
+                ai_context_strategy="$1"
                 shift
                 ;;
             --status-profile)
@@ -351,6 +366,18 @@ main() {
     esac
     export CCP_STATUS_PROFILE="${status_profile}"
 
+    # Resolve AI context strategy with precedence:
+    #   CLI flag > environment variable > default haiku.
+    case "${ai_context_strategy}" in
+        haiku|inline)
+            ;;
+        *)
+            log_error "Invalid AI context strategy '${ai_context_strategy}'. Use: haiku or inline."
+            exit 1
+            ;;
+    esac
+    export CCP_AI_CONTEXT_STRATEGY="${ai_context_strategy}"
+
     # Check dependencies
     if ! check_dependencies; then
         exit 1
@@ -371,7 +398,11 @@ main() {
         log_info "Dynamic titles: ${GREEN}enabled${NC}"
         log_info "Status profile: ${CCP_STATUS_PROFILE}"
         if [[ "${enable_ai_context}" = true ]]; then
-            log_info "AI context:     ${GREEN}enabled${NC} (prompts summarized via claude-haiku — uses your subscription)"
+            if [[ "${ai_context_strategy}" == "inline" ]]; then
+                log_info "AI context:     ${GREEN}enabled${NC} (inline — summary via system prompt, no extra API calls)"
+            else
+                log_info "AI context:     ${GREEN}enabled${NC} (prompts summarized via claude-haiku — uses your subscription)"
+            fi
         fi
     fi
     if [[ ${#claude_args[@]} -gt 0 ]]; then
@@ -421,6 +452,15 @@ main() {
 
         # Inject hooks into the project's .claude/settings.local.json
         ccp_settings_file=$(setup_ccp_hooks "${directory}" "${CCP_HOOK_RUNNER}")
+
+        # Inline AI context: inject a system prompt instruction asking Claude
+        # to echo a structured task summary as its first action.  The summary
+        # is captured by the PostToolUse hook (see hook_runner.sh post-tool).
+        if [[ "${enable_ai_context}" = true && "${ai_context_strategy}" == "inline" ]]; then
+            local _ccp_inline_prompt
+            _ccp_inline_prompt="[CCP Terminal Title] As your very first action, run a single bash command: echo 'CCP_TASK_SUMMARY:' followed by a 3-5 word title-case summary of the user's task. Example: echo 'CCP_TASK_SUMMARY:Fix JWT Validation Bug'. Do this once, then proceed with your work normally."
+            claude_args+=("--append-system-prompt" "${_ccp_inline_prompt}")
+        fi
 
         # Start background title updater, then run Claude directly.
         title_updater "${title}"
