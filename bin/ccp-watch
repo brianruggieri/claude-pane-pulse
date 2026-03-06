@@ -91,7 +91,12 @@ alert() {
 }
 
 ts_to_epoch() {
-    date -j -f "%Y-%m-%dT%H:%M:%S" "${1%%.*}" +%s 2>/dev/null || echo "0"
+    local _ts="${1%%.*}"
+    # BSD (macOS): date -j -f fmt str +%s
+    # GNU (Linux): date -d str +%s
+    date -j -f "%Y-%m-%dT%H:%M:%S" "${_ts}" +%s 2>/dev/null \
+        || date -d "${_ts}" +%s 2>/dev/null \
+        || echo "0"
 }
 
 short_ts() {
