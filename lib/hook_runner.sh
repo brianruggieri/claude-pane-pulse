@@ -18,10 +18,52 @@ set -uo pipefail
 PATH="/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
 export PATH
 
-# Debug helper — writes to CCP_DEBUG_LOG if set, otherwise silent.
+# Debug helper — writes structured JSONL to CCP_DEBUG_LOG if set, otherwise silent.
+# When CCP_DEBUG_JSONL=true, writes machine-readable JSON lines for the analyzer.
+# Otherwise falls back to the legacy plain-text format.
 _dbg() {
     [[ -n "${CCP_DEBUG_LOG:-}" ]] || return 0
-    printf '[hook_runner %s %s] %s\n' "${mode:-?}" "$$" "$1" >> "${CCP_DEBUG_LOG}" 2>/dev/null || true
+    if [[ "${CCP_DEBUG_JSONL:-}" == "true" ]]; then
+        # Structured JSONL mode — used by --debug-ccp
+        local _ts _json
+        _ts=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z" 2>/dev/null || echo "")
+        _json=$(jq -cn \
+            --arg ts "${_ts}" \
+            --arg src "hook" \
+            --arg mode "${mode:-?}" \
+            --arg pid "${CCP_SESSION_PID:-$$}" \
+            --arg msg "$1" \
+            '{ts:$ts, src:$src, mode:$mode, pid:$pid, msg:$msg}' 2>/dev/null) || true
+        [[ -n "${_json}" ]] && printf '%s\n' "${_json}" >> "${CCP_DEBUG_LOG}" 2>/dev/null || true
+    else
+        printf '[hook_runner %s %s] %s\n' "${mode:-?}" "$$" "$1" >> "${CCP_DEBUG_LOG}" 2>/dev/null || true
+    fi
+}
+
+# Structured debug event — writes a full JSONL event with typed fields.
+# Only active in JSONL mode; silently no-ops otherwise.
+_dbg_event() {
+    [[ -n "${CCP_DEBUG_LOG:-}" && "${CCP_DEBUG_JSONL:-}" == "true" ]] || return 0
+    local _event="$1"
+    shift
+    local _ts _json
+    _ts=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z" 2>/dev/null || echo "")
+    # Build JSON from positional key=value pairs
+    _json=$(jq -cn \
+        --arg ts "${_ts}" \
+        --arg src "hook" \
+        --arg mode "${mode:-?}" \
+        --arg pid "${CCP_SESSION_PID:-$$}" \
+        --arg event "${_event}" \
+        '{ts:$ts, src:$src, mode:$mode, pid:$pid, event:$event}' 2>/dev/null) || return 0
+    # Merge additional fields
+    while [[ $# -gt 0 ]]; do
+        local _key="${1%%=*}"
+        local _val="${1#*=}"
+        _json=$(printf '%s' "${_json}" | jq -c --arg k "${_key}" --arg v "${_val}" '. + {($k): $v}' 2>/dev/null) || true
+        shift
+    done
+    [[ -n "${_json}" ]] && printf '%s\n' "${_json}" >> "${CCP_DEBUG_LOG}" 2>/dev/null || true
 }
 
 mode="${1:-}"
@@ -221,6 +263,7 @@ case "${mode}" in
                 ;;
         esac
 
+        _dbg_event "status_set" "tool=${tool}" "command=$(printf '%s' "${command_str}" | head -c 80)" "status=${status}" "json_bytes=${#json_input}"
         _dbg "tool=${tool} status=${status}"
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
         ;;
@@ -233,7 +276,20 @@ case "${mode}" in
             | tr '\n' ' ' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//') || true
 
         [[ -z "${raw_prompt}" ]] && exit 0
+        _dbg_event "prompt_received" "prompt_len=${#raw_prompt}" "prompt_preview=$(printf '%s' "${raw_prompt}" | head -c 120)"
         _dbg "raw_prompt=${raw_prompt}"
+
+        # Detect system/internal messages injected into UserPromptSubmit.
+        # These are NOT real user prompts — they're Claude Code infrastructure
+        # (task notifications, system reminders, etc.) and must not pollute
+        # the context file or trigger AI summary tracking.
+        _is_system_message=false
+        if [[ "${raw_prompt}" =~ ^\<task-notification\> ]] || \
+           [[ "${raw_prompt}" =~ ^\<system- ]] || \
+           [[ "${raw_prompt}" =~ ^\<context\> ]]; then
+            _is_system_message=true
+            _dbg_event "system_message_skipped" "type=$(printf '%s' "${raw_prompt}" | grep -oE '<[a-z-]+>' | head -1)" "prompt_len=${#raw_prompt}"
+        fi
 
         # Write 💭 Thinking immediately so title transitions from any stale status
         # (e.g. "Welcome back", "✅ Tests passed") as soon as the user submits.
@@ -241,7 +297,14 @@ case "${mode}" in
         # races with the async PreToolUse hook that fires right after this one.
         if [[ -n "${CCP_STATUS_FILE:-}" ]]; then
             atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
+            _dbg_event "status_set" "status=💭 Thinking" "trigger=user-prompt"
             _dbg "wrote Thinking to status file on user-prompt"
+        fi
+
+        # Skip context update for system messages — they contain raw XML/tags
+        # that would garble the terminal title.
+        if [[ "${_is_system_message}" = true ]]; then
+            exit 0
         fi
 
         # Write first-5-words placeholder immediately so the title updates at once
@@ -249,6 +312,7 @@ case "${mode}" in
         initial=$(printf '%s' "${raw_prompt}" \
             | awk '{n=(NF<5?NF:5); for(i=1;i<=n;i++) printf "%s%s",$i,(i<n?" ":""); print ""}')
         [[ -n "${initial}" ]] && atomic_write "${CCP_CONTEXT_FILE}" "${initial}"
+        _dbg_event "context_set" "context=${initial}" "source=first-5-words"
 
         # AI context summarization is opt-in (--ai-context flag / CCP_ENABLE_AI_CONTEXT=true).
         # It sends your prompt text to claude-haiku and counts against your subscription.
@@ -262,6 +326,7 @@ case "${mode}" in
         # (via --append-system-prompt injection) and captured in the post-tool
         # handler.  No separate API call needed — skip the Haiku subprocess.
         if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]]; then
+            _dbg_event "ai_context_pending" "strategy=inline" "waiting_for=post-tool CCP_TASK_SUMMARY marker"
             _dbg "AI context strategy=inline — skipping haiku subprocess"
             exit 0
         fi
@@ -297,6 +362,7 @@ case "${mode}" in
                 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//') || true
 
             [[ -n "${summary}" ]] && atomic_write "${_ccp_ctx}" "${summary}"
+            _dbg_event "ai_summary" "summary=${summary}" "strategy=haiku"
             _dbg "distilled: ${summary}"
         ) &
         disown 2>/dev/null || true
@@ -304,6 +370,7 @@ case "${mode}" in
 
     stop)
         [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
+        _dbg_event "status_cleared" "trigger=stop"
         _dbg "clearing status file"
         # Empty status signals idle to the monitor on the next heartbeat
         atomic_write "${CCP_STATUS_FILE}" ""
@@ -336,15 +403,21 @@ case "${mode}" in
         # or bin/ccp can never produce a false match.
         if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]] && \
            [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
-           [[ -n "${CCP_SESSION_PID:-}" ]] && \
-           [[ "${tool_response}" =~ CCP_TASK_SUMMARY_${CCP_SESSION_PID}:(.+) ]]; then
-            _inline_summary="${BASH_REMATCH[1]}"
-            _inline_summary=$(printf '%s' "${_inline_summary}" \
-                | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' \
-                | sed "s/^['\"]//;s/['\"]$//")
-            if [[ -n "${_inline_summary}" ]]; then
-                atomic_write "${CCP_CONTEXT_FILE}" "${_inline_summary}"
-                _dbg "inline-summary: ${_inline_summary}"
+           [[ -n "${CCP_SESSION_PID:-}" ]]; then
+            if [[ "${tool_response}" =~ CCP_TASK_SUMMARY_${CCP_SESSION_PID}:(.+) ]]; then
+                _inline_summary="${BASH_REMATCH[1]}"
+                _inline_summary=$(printf '%s' "${_inline_summary}" \
+                    | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' \
+                    | sed "s/^['\"]//;s/['\"]$//")
+                if [[ -n "${_inline_summary}" ]]; then
+                    atomic_write "${CCP_CONTEXT_FILE}" "${_inline_summary}"
+                    _dbg_event "ai_summary" "summary=${_inline_summary}" "strategy=inline"
+                    _dbg "inline-summary: ${_inline_summary}"
+                fi
+            else
+                # Bash output didn't contain the inline marker — expected for most
+                # Bash calls, but useful for tracking whether a summary ever arrives.
+                _dbg_event "inline_marker_miss" "command=$(printf '%s' "${command_str}" | head -c 80)" "output_len=${#tool_response}"
             fi
         fi
 
@@ -361,6 +434,7 @@ case "${mode}" in
             status="💾 Committed"
         fi
 
+        _dbg_event "status_set" "tool=${tool}" "command=$(printf '%s' "${command_str}" | head -c 80)" "status=${status}" "output_preview=$(printf '%s' "${tool_response}" | head -c 120)"
         _dbg "post-tool tool=${tool} status=${status}"
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
 
@@ -370,6 +444,7 @@ case "${mode}" in
            [[ "${command_str}" =~ git[[:space:]]+(checkout|switch|branch) ]]; then
             new_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || true
             if [[ -n "${new_branch}" ]]; then
+                _dbg_event "branch_change" "branch=${new_branch}"
                 _dbg "branch change detected: ${new_branch}"
                 atomic_write "${CCP_BRANCH_FILE}" "${new_branch}"
             fi
@@ -393,6 +468,7 @@ case "${mode}" in
             status="🐛 Error"
         fi
 
+        _dbg_event "status_set" "tool=${tool}" "command=$(printf '%s' "${command_str}" | head -c 80)" "status=${status}" "error=true"
         _dbg "post-tool-failure tool=${tool} status=${status}"
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
         ;;
@@ -408,6 +484,7 @@ case "${mode}" in
         fi
 
         status=$(event_status_from_payload "${event_name}" "${json_input}")
+        _dbg_event "lifecycle_event" "event_name=${event_name}" "profile=${status_profile}" "status=${status}"
         _dbg "event=${event_name} profile=${status_profile} status=${status}"
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
         ;;
