@@ -522,8 +522,10 @@ main() {
         if [[ "${enable_debug_ccp}" = true && "${TERM_PROGRAM:-}" == "iTerm.app" ]]; then
             local watch_cmd="${SCRIPT_DIR}/ccp-watch"
             if [[ -x "${watch_cmd}" ]]; then
+                # Launch via login shell so the user's full PATH is available
+                local _user_shell="${SHELL:-/bin/bash}"
                 local _as_cmd
-                _as_cmd="tell application \"iTerm2\" to tell current session of current tab of current window to split horizontally with default profile command \"${watch_cmd} '${CCP_DEBUG_LOG}'\""
+                _as_cmd="tell application \"iTerm2\" to tell current session of current tab of current window to split horizontally with default profile command \"${_user_shell} -l -c '\\\"${watch_cmd}\\\" \\\"${CCP_DEBUG_LOG}\\\"'\""
                 osascript -e "${_as_cmd}" >/dev/null 2>&1 &
                 disown 2>/dev/null || true
             fi

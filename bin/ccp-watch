@@ -13,9 +13,17 @@
 
 set -euo pipefail
 
-# Extend PATH — iTerm2 auto-pane runs without the user's shell profile,
-# so tools like jq in /opt/homebrew/bin won't be found otherwise.
-export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/bin:${PATH}"
+# Extend PATH — iTerm2 auto-pane and similar launchers may run without
+# the user's shell profile, so common tool locations need to be explicit.
+export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${HOME}/bin:${PATH}"
+
+# jq is required for parsing JSONL events
+if ! command -v jq &>/dev/null; then
+    echo "Error: jq is required but not found in PATH." >&2
+    echo "Install with: brew install jq (macOS) or apt install jq (Linux)" >&2
+    echo "PATH=${PATH}" >&2
+    exit 1
+fi
 
 LOG_DIR="${HOME}/.config/claude-code-pulse/logs"
 
