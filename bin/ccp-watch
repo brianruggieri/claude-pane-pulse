@@ -74,6 +74,7 @@ last_status_ts=""
 last_event_ts=""
 pending_summaries=0
 delivered_summaries=0
+inline_miss_warned=false
 total_errors=0
 total_events=0
 
@@ -293,12 +294,14 @@ tail -f "${log}" | while IFS= read -r line; do
             alert "OK" "Summary delivered: '${summary}' (${delivered_summaries}/${pending_summaries})"
             ;;
         inline_marker_miss)
-            if [[ ${pending_summaries} -gt ${delivered_summaries} ]]; then
-                cmd=$(printf '%s' "${line}" | jq -r '.command // ""' 2>/dev/null | head -c 40) || cmd=""
-                outstanding=$((pending_summaries - delivered_summaries))
+            # Only warn once per session — inline strategy is best-effort,
+            # Claude may skip the summary echo entirely.
+            if [[ "${inline_miss_warned}" = false && ${pending_summaries} -gt ${delivered_summaries} ]]; then
                 miss_count=$(jq -n "[inputs | select(.event == \"inline_marker_miss\")] | length" "${log}" 2>/dev/null) || miss_count=0
-                if [[ ${miss_count} -gt 5 && ${outstanding} -gt 0 ]]; then
-                    alert "WARN" "Inline summary still pending after ${miss_count} Bash calls (cmd: ${cmd})"
+                if [[ ${miss_count} -ge 20 ]]; then
+                    cmd=$(printf '%s' "${line}" | jq -r '.command // ""' 2>/dev/null | head -c 40) || cmd=""
+                    alert "INFO" "Inline summary not delivered after ${miss_count} Bash calls (best-effort, using first-5-words fallback)"
+                    inline_miss_warned=true
                 fi
             fi
             ;;
