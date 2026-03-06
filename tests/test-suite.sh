@@ -212,6 +212,30 @@ assert_empty "find_session_title ignores dead sessions" "${dead_title}"
 
 cleanup_session
 
+# prune_dead_sessions cleans orphan state files for dead PIDs
+echo '[]' > "${SESSION_FILE}"
+# Create orphan state files for the fake dead PID
+echo "📖 Reading" > "${STATE_DIR}/status.999999999.txt"
+echo "some context" > "${STATE_DIR}/context.999999999.txt"
+echo "main" > "${STATE_DIR}/branch.999999999.txt"
+echo "999999999" > "${STATE_DIR}/monitor.999999999.pid"
+# Inject the dead session so prune has something to remove
+echo '[{"title":"Orphan","directory":"/tmp/orphan","started":"2026-01-01T00:00:00Z","pid":999999999}]' \
+    > "${SESSION_FILE}"
+prune_dead_sessions
+orphan_status_exists=0
+[[ -f "${STATE_DIR}/status.999999999.txt" ]] && orphan_status_exists=1
+assert_equals "prune_dead_sessions removes orphan status file" "0" "${orphan_status_exists}"
+orphan_context_exists=0
+[[ -f "${STATE_DIR}/context.999999999.txt" ]] && orphan_context_exists=1
+assert_equals "prune_dead_sessions removes orphan context file" "0" "${orphan_context_exists}"
+orphan_branch_exists=0
+[[ -f "${STATE_DIR}/branch.999999999.txt" ]] && orphan_branch_exists=1
+assert_equals "prune_dead_sessions removes orphan branch file" "0" "${orphan_branch_exists}"
+orphan_monitor_exists=0
+[[ -f "${STATE_DIR}/monitor.999999999.pid" ]] && orphan_monitor_exists=1
+assert_equals "prune_dead_sessions removes orphan monitor file" "0" "${orphan_monitor_exists}"
+
 # ── Tests: status_to_priority ─────────────────────────────────────────────────
 
 echo ""
