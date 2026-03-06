@@ -13,6 +13,10 @@
 
 set -euo pipefail
 
+# Extend PATH — iTerm2 auto-pane runs without the user's shell profile,
+# so tools like jq in /opt/homebrew/bin won't be found otherwise.
+export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/bin:${PATH}"
+
 LOG_DIR="${HOME}/.config/claude-code-pulse/logs"
 
 # ── Pane title ─────────────────────────────────────────────────────────────
