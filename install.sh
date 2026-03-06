@@ -43,8 +43,10 @@ mkdir -p "${INSTALL_DIR}/lib"
 
 # Copy files
 cp "${SCRIPT_DIR}/bin/ccp" "${INSTALL_DIR}/bin/ccp"
+cp "${SCRIPT_DIR}/bin/ccp-watch" "${INSTALL_DIR}/bin/ccp-watch"
 cp "${SCRIPT_DIR}"/lib/*.sh "${INSTALL_DIR}/lib/"
 chmod +x "${INSTALL_DIR}/bin/ccp"
+chmod +x "${INSTALL_DIR}/bin/ccp-watch"
 chmod +x "${INSTALL_DIR}/lib/hook_runner.sh"
 
 echo -e "  ${GREEN}✓${NC} Installed to ${INSTALL_DIR}"
@@ -56,9 +58,13 @@ mkdir -p "${BIN_DIR}"
 if [[ -L "${BIN_DIR}/ccp" ]]; then
     rm "${BIN_DIR}/ccp"
 fi
+if [[ -L "${BIN_DIR}/ccp-watch" ]]; then
+    rm "${BIN_DIR}/ccp-watch"
+fi
 
 ln -s "${INSTALL_DIR}/bin/ccp" "${BIN_DIR}/ccp"
-echo -e "  ${GREEN}✓${NC} Symlink created: ${BIN_DIR}/ccp"
+ln -s "${INSTALL_DIR}/bin/ccp-watch" "${BIN_DIR}/ccp-watch"
+echo -e "  ${GREEN}✓${NC} Symlinks created: ${BIN_DIR}/ccp, ${BIN_DIR}/ccp-watch"
 
 # ── Update PATH in shell profile ──────────────────────────────────────────────
 

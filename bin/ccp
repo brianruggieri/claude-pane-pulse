@@ -72,6 +72,7 @@ ${BLUE}ccp Options:${NC}
                             Also: export CCP_AI_CONTEXT_STRATEGY=inline for always-on
     --debug-ccp             Enable structured JSONL debug logging to
                             ~/.config/claude-code-pulse/logs/
+                            In iTerm2, auto-opens Pulse Monitor in a split pane.
                             Also: export CCP_DEBUG=true for always-on
     --goto TITLE            Re-open a previous session by title search
     --list, -l              List all active sessions
@@ -516,6 +517,25 @@ main() {
 
         # Start background title updater, then run Claude directly.
         title_updater "${title}"
+
+        # Auto-open Pulse Monitor in a split pane (iTerm2 + debug mode)
+        if [[ "${enable_debug_ccp}" = true && "${TERM_PROGRAM:-}" == "iTerm.app" ]]; then
+            local watch_cmd="${SCRIPT_DIR}/ccp-watch"
+            if [[ -x "${watch_cmd}" ]]; then
+                osascript - "${watch_cmd}" "${CCP_DEBUG_LOG}" <<'APPLESCRIPT' 2>/dev/null &
+on run argv
+    set watchCmd to item 1 of argv
+    set logFile to item 2 of argv
+    tell application "iTerm2"
+        tell current session of current tab of current window
+            split horizontally with default profile command (watchCmd & " '" & logFile & "'")
+        end tell
+    end tell
+end run
+APPLESCRIPT
+                disown 2>/dev/null || true
+            fi
+        fi
 
         "${claude_cmd}" ${claude_args[@]+"${claude_args[@]}"}
     else
