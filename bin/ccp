@@ -72,6 +72,7 @@ ${BLUE}ccp Options:${NC}
                             Also: export CCP_AI_CONTEXT_STRATEGY=inline for always-on
     --debug-ccp             Enable structured JSONL debug logging to
                             ~/.config/claude-code-pulse/logs/
+                            In iTerm2, auto-opens Pulse Monitor in a split pane.
                             Also: export CCP_DEBUG=true for always-on
     --goto TITLE            Re-open a previous session by title search
     --list, -l              List all active sessions
@@ -390,6 +391,18 @@ main() {
     if [[ "${enable_debug_ccp}" = true ]]; then
         local log_dir="${STATE_DIR}/logs"
         mkdir -p "${log_dir}"
+
+        # Prune debug logs from dead sessions (PID embedded in filename)
+        local _old_log _old_pid
+        for _old_log in "${log_dir}"/debug.*.jsonl; do
+            [[ -f "${_old_log}" ]] || continue
+            _old_pid=$(basename "${_old_log}" .jsonl)
+            _old_pid="${_old_pid##*.}"
+            if [[ "${_old_pid}" =~ ^[0-9]+$ ]] && ! kill -0 "${_old_pid}" 2>/dev/null; then
+                rm -f "${_old_log}"
+            fi
+        done
+
         local log_ts
         log_ts=$(date +"%Y%m%d-%H%M%S")
         export CCP_DEBUG_LOG="${log_dir}/debug.${log_ts}.$$.jsonl"
@@ -430,7 +443,8 @@ main() {
         cleanup_session
         cleanup_monitor
         teardown_ccp_hooks "${ccp_settings_file}"
-        rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}" "${CCP_BRANCH_FILE:-}"
+        rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}" "${CCP_BRANCH_FILE:-}" \
+             "${STATE_DIR}/inline_captured.$$"
     }
     trap '_ccp_cleanup' EXIT
 
@@ -516,6 +530,19 @@ main() {
 
         # Start background title updater, then run Claude directly.
         title_updater "${title}"
+
+        # Auto-open Pulse Monitor in a split pane (iTerm2 + debug mode)
+        if [[ "${enable_debug_ccp}" = true && "${TERM_PROGRAM:-}" == "iTerm.app" ]]; then
+            local watch_cmd="${SCRIPT_DIR}/ccp-watch"
+            if [[ -x "${watch_cmd}" ]]; then
+                # Launch via login shell so the user's full PATH is available
+                local _user_shell="${SHELL:-/bin/bash}"
+                local _as_cmd
+                _as_cmd="tell application \"iTerm2\" to tell current session of current tab of current window to split horizontally with default profile command \"${_user_shell} -l -c '\\\"${watch_cmd}\\\" \\\"${CCP_DEBUG_LOG}\\\"'\""
+                osascript -e "${_as_cmd}" >/dev/null 2>&1 &
+                disown 2>/dev/null || true
+            fi
+        fi
 
         "${claude_cmd}" ${claude_args[@]+"${claude_args[@]}"}
     else

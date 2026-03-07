@@ -68,7 +68,7 @@ _dbg_event() {
 
 mode="${1:-}"
 
-_dbg "START path=${PATH} status_file=${CCP_STATUS_FILE:-} context_file=${CCP_CONTEXT_FILE:-}"
+_dbg "START status_file=${CCP_STATUS_FILE:-} context_file=${CCP_CONTEXT_FILE:-}"
 
 # Guard: nothing to do if CCP files are not configured
 if [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]]; then
@@ -401,9 +401,13 @@ case "${mode}" in
         # unique per session.  Source files on disk always contain the generic
         # template string (without a real PID), so grep/cat of hook_runner.sh
         # or bin/ccp can never produce a false match.
+        #
+        # Once captured, a marker file signals future invocations to skip scanning.
+        _inline_captured_file="${STATE_DIR:-/tmp}/inline_captured.${CCP_SESSION_PID:-$$}"
         if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]] && \
            [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
-           [[ -n "${CCP_SESSION_PID:-}" ]]; then
+           [[ -n "${CCP_SESSION_PID:-}" ]] && \
+           [[ ! -f "${_inline_captured_file}" ]]; then
             if [[ "${tool_response}" =~ CCP_TASK_SUMMARY_${CCP_SESSION_PID}:(.+) ]]; then
                 _inline_summary="${BASH_REMATCH[1]}"
                 _inline_summary=$(printf '%s' "${_inline_summary}" \
@@ -411,6 +415,7 @@ case "${mode}" in
                     | sed "s/^['\"]//;s/['\"]$//")
                 if [[ -n "${_inline_summary}" ]]; then
                     atomic_write "${CCP_CONTEXT_FILE}" "${_inline_summary}"
+                    touch "${_inline_captured_file}" 2>/dev/null || true
                     _dbg_event "ai_summary" "summary=${_inline_summary}" "strategy=inline"
                     _dbg "inline-summary: ${_inline_summary}"
                 fi

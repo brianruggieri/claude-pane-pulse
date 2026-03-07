@@ -11,6 +11,7 @@ NC='\033[0m'
 
 INSTALL_DIR="${HOME}/.local/share/ccp"
 BIN_LINK="${HOME}/bin/ccp"
+BIN_WATCH_LINK="${HOME}/bin/ccp-watch"
 CONFIG_DIR="${HOME}/.config/claude-code-pulse"
 
 echo ""
@@ -20,6 +21,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "This will remove:"
 echo "  • ${BIN_LINK} (symlink)"
+echo "  • ${BIN_WATCH_LINK} (symlink)"
 echo "  • ${INSTALL_DIR} (program files)"
 echo ""
 echo -n "Continue? [y/N] "
@@ -41,6 +43,12 @@ elif [[ -f "${BIN_LINK}" ]]; then
     echo -e "  ${GREEN}✓${NC} Removed ${BIN_LINK}"
 else
     echo -e "  ${BLUE}ℹ${NC} ${BIN_LINK} not found (already removed?)"
+fi
+
+# Remove ccp-watch symlink
+if [[ -L "${BIN_WATCH_LINK}" || -f "${BIN_WATCH_LINK}" ]]; then
+    rm "${BIN_WATCH_LINK}"
+    echo -e "  ${GREEN}✓${NC} Removed ${BIN_WATCH_LINK}"
 fi
 
 # Remove install directory
