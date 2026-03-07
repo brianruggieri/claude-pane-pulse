@@ -70,6 +70,9 @@ ${BLUE}ccp Options:${NC}
                               haiku   — separate claude-haiku call (default)
                               inline  — system prompt injection, zero extra API calls
                             Also: export CCP_AI_CONTEXT_STRATEGY=inline for always-on
+    --debug-ccp             Enable structured JSONL debug logging to
+                            ~/.config/claude-code-pulse/logs/
+                            Also: export CCP_DEBUG=true for always-on
     --goto TITLE            Re-open a previous session by title search
     --list, -l              List all active sessions
     --help, -h              Show this help
@@ -163,6 +166,7 @@ main() {
     local status_profile_cli=""
     local enable_ai_context="${CCP_ENABLE_AI_CONTEXT:-false}"
     local ai_context_strategy="${CCP_AI_CONTEXT_STRATEGY:-haiku}"
+    local enable_debug_ccp="${CCP_DEBUG:-false}"
     local claude_args=()
 
     # Initialize state directory
@@ -189,6 +193,10 @@ main() {
                 ;;
             --no-dynamic)
                 enable_dynamic=false
+                shift
+                ;;
+            --debug-ccp)
+                enable_debug_ccp=true
                 shift
                 ;;
             --ai-context)
@@ -378,6 +386,29 @@ main() {
     esac
     export CCP_AI_CONTEXT_STRATEGY="${ai_context_strategy}"
 
+    # Setup debug logging if enabled
+    if [[ "${enable_debug_ccp}" = true ]]; then
+        local log_dir="${STATE_DIR}/logs"
+        mkdir -p "${log_dir}"
+        local log_ts
+        log_ts=$(date +"%Y%m%d-%H%M%S")
+        export CCP_DEBUG_LOG="${log_dir}/debug.${log_ts}.$$.jsonl"
+        export CCP_DEBUG_JSONL="true"
+        # Write session start event
+        local _start_ts
+        _start_ts=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+        jq -cn \
+            --arg ts "${_start_ts}" \
+            --arg pid "$$" \
+            --arg title "${title}" \
+            --arg dir "${directory}" \
+            --arg profile "${status_profile}" \
+            --arg ai_ctx "${enable_ai_context}" \
+            --arg ai_strat "${ai_context_strategy}" \
+            '{ts:$ts, src:"session", pid:$pid, event:"session_start", title:$title, dir:$dir, profile:$profile, ai_context:$ai_ctx, ai_strategy:$ai_strat}' \
+            >> "${CCP_DEBUG_LOG}" 2>/dev/null || true
+    fi
+
     # Check dependencies
     if ! check_dependencies; then
         exit 1
@@ -385,7 +416,23 @@ main() {
 
     # Setup cleanup on exit (ccp_settings_file populated below if dynamic mode)
     ccp_settings_file=""
-    trap 'cleanup_session; cleanup_monitor; teardown_ccp_hooks "${ccp_settings_file}"; rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}" "${CCP_BRANCH_FILE:-}"' EXIT
+    _ccp_cleanup() {
+        # Log session end if debug is active
+        if [[ -n "${CCP_DEBUG_LOG:-}" && "${CCP_DEBUG_JSONL:-}" == "true" ]]; then
+            local _end_ts
+            _end_ts=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z" 2>/dev/null || echo "")
+            jq -cn \
+                --arg ts "${_end_ts}" \
+                --arg pid "$$" \
+                '{ts:$ts, src:"session", pid:$pid, event:"session_end"}' \
+                >> "${CCP_DEBUG_LOG}" 2>/dev/null || true
+        fi
+        cleanup_session
+        cleanup_monitor
+        teardown_ccp_hooks "${ccp_settings_file}"
+        rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}" "${CCP_BRANCH_FILE:-}"
+    }
+    trap '_ccp_cleanup' EXIT
 
     # Set initial title and save session
     set_title "${title}"
@@ -403,6 +450,9 @@ main() {
             else
                 log_info "AI context:     ${GREEN}enabled${NC} (prompts summarized via claude-haiku — uses your subscription)"
             fi
+        fi
+        if [[ "${enable_debug_ccp}" = true ]]; then
+            log_info "Debug log:      ${YELLOW}${CCP_DEBUG_LOG}${NC}"
         fi
     fi
     if [[ ${#claude_args[@]} -gt 0 ]]; then
