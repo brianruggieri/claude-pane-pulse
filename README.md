@@ -76,6 +76,9 @@ ccp --ai-context "Fix the auth bug"
 
 # Inline strategy — zero extra API calls (one echo visible per session)
 ccp --ai-context --ai-context-strategy inline "Fix the auth bug"
+
+# Debug mode — structured JSONL logging + live Pulse Monitor (iTerm2: auto-opens in split pane)
+ccp --debug-ccp "Fix the auth bug"
 ```
 
 > See [AI Task Summaries](#ai-task-summaries) for the `--ai-context` flag and strategy options.
@@ -307,6 +310,70 @@ ccp -c                      # resume last conversation
 ccp --resume abc-123        # resume by session ID
 ```
 
+## Debugging & Diagnostics
+
+### `--debug-ccp`
+
+```bash
+ccp --debug-ccp "PR #89 - Fix auth"
+
+# Always on via environment variable
+export CCP_DEBUG=true
+```
+
+Enables structured JSONL logging. Each hook event, status change, and AI summary is written as a JSON line to:
+
+```
+~/.config/claude-code-pulse/logs/debug.<timestamp>.<pid>.jsonl
+```
+
+Old log files from dead sessions are pruned automatically on startup.
+
+**In iTerm2**, `--debug-ccp` also auto-opens the Pulse Monitor in a horizontal split pane. You don't need to run `ccp-watch` manually — it launches automatically and connects to the session log.
+
+### `ccp-watch` — Pulse Monitor
+
+`ccp-watch` is a live debug monitor that streams events from a JSONL log and flags issues in real time.
+
+```bash
+# Watch the latest debug log (auto-detects)
+ccp-watch
+
+# Watch a specific log file
+ccp-watch ~/.config/claude-code-pulse/logs/debug.20260301-120000.12345.jsonl
+
+# List all available debug logs
+ccp-watch --list
+```
+
+What it monitors:
+
+| Check | What it catches |
+|-------|----------------|
+| **Status changes** | Every status transition as it happens |
+| **AI summaries** | Delivery confirmation (`N/N delivered`) |
+| **Stuck detection** | Status held >45s before changing |
+| **Event gaps** | Silence between events >120s |
+| **Status mismatches** | Tool fired but wrong status was set |
+| **System messages** | `<task-notification>` and `<context>` payloads filtered from title |
+| **Title anomalies** | Malformed title strings |
+| **Session summary** | Total events, errors, and summary delivery rate at session end |
+
+The pane title updates to `🩺 Pulse Monitor — <project>` when a session connects.
+
+### JSONL event format
+
+Each line in the debug log is a JSON object:
+
+```json
+{"ts":"2026-03-01T12:00:00.000Z","src":"session","pid":"12345","event":"session_start","title":"PR #89 - Fix auth","dir":"/my/project","profile":"quiet","ai_context":"false"}
+{"ts":"2026-03-01T12:00:01.000Z","src":"hook","mode":"pre-tool","pid":"12345","event":"status_set","status":"✏️ Editing","tool":"Edit"}
+{"ts":"2026-03-01T12:00:02.000Z","src":"hook","mode":"post-tool","pid":"12345","event":"status_set","status":"✅ Tests passed"}
+{"ts":"2026-03-01T12:00:03.000Z","src":"session","pid":"12345","event":"session_end"}
+```
+
+Key fields: `ts` (ISO 8601), `src` (`session` or `hook`), `mode` (hook mode), `pid`, `event`, `status`, `tool`, `summary`.
+
 ## Terminal Support
 
 Tested on:
@@ -360,6 +427,7 @@ my-app (bug/login-crash)     | login bug  | ⬆️ Pushing
 | `--status-profile quiet\|verbose` | Which events to surface (default: `quiet`) |
 | `--ai-context` | Summarize prompts into a 3-5 word title label (opt-in) |
 | `--ai-context-strategy haiku\|inline` | Summary strategy: `haiku` (default, invisible) or `inline` (zero extra API calls) |
+| `--debug-ccp` | Structured JSONL debug logging to `~/.config/claude-code-pulse/logs/`; auto-opens Pulse Monitor in iTerm2 |
 | `--goto TITLE` | Re-open a previous session by title |
 | `--list`, `-l` | List active ccp sessions |
 | `--help`, `-h` | Show help |
@@ -374,6 +442,7 @@ my-app (bug/login-crash)     | login bug  | ⬆️ Pushing
 | `CCP_STATUS_PROFILE` | `quiet` | Default status profile |
 | `CCP_ENABLE_AI_CONTEXT` | `false` | Always-on AI prompt summarization |
 | `CCP_AI_CONTEXT_STRATEGY` | `haiku` | Summary strategy: `haiku` or `inline` |
+| `CCP_DEBUG` | `false` | Always-on structured JSONL debug logging |
 
 ## Documentation
 
@@ -381,6 +450,7 @@ my-app (bug/login-crash)     | login bug  | ⬆️ Pushing
 - [Dynamic Titles](docs/dynamic-titles.md)
 - [Hook Integration](docs/hooks.md)
 - [AI Context Summarization](docs/ai-context.md)
+- [Debugging & Diagnostics](#debugging--diagnostics)
 - [Installation Guide](docs/installation.md)
 - [Contributing](CONTRIBUTING.md)
 
