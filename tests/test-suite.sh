@@ -338,6 +338,64 @@ result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash generic → 🖥️ Running"    "🖥️ Running"    "${result}"
 
+# pre-tool: ToolSearch (Claude's built-in tool discovery)
+result=$(echo '{"tool_name":"ToolSearch","tool_input":{"query":"slack"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "ToolSearch → 📖 Reading"       "📖 Reading"    "${result}"
+
+# pre-tool: MCP tool classification (action verb heuristic)
+result=$(echo '{"tool_name":"mcp__filesystem__read_file","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp read_file → 📖 Reading"    "📖 Reading"    "${result}"
+
+result=$(echo '{"tool_name":"mcp__filesystem__list_directory","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp list_directory → 📖 Reading" "📖 Reading"  "${result}"
+
+result=$(echo '{"tool_name":"mcp__github__search_code","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp search_code → 📖 Reading"  "📖 Reading"    "${result}"
+
+result=$(echo '{"tool_name":"mcp__filesystem__write_file","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp write_file → ✏️ Editing"   "✏️ Editing"    "${result}"
+
+result=$(echo '{"tool_name":"mcp__github__create_pull_request","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp create_pull_request → ✏️ Editing" "✏️ Editing" "${result}"
+
+result=$(echo '{"tool_name":"mcp__github__add_issue_comment","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp add_issue_comment → 📤 Sending" "📤 Sending" "${result}"
+
+result=$(echo '{"tool_name":"mcp__playwright__browser_navigate","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp browser_navigate → 🌐 Browsing" "🌐 Browsing" "${result}"
+
+result=$(echo '{"tool_name":"mcp__playwright__browser_click","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp browser_click → 🌐 Browsing"    "🌐 Browsing" "${result}"
+
+result=$(echo '{"tool_name":"mcp__plugin_context7__resolve-library-id","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "mcp resolve-library-id → 📖 Reading" "📖 Reading" "${result}"
+
+# pre-tool: completely unknown tool → generic fallback
+result=$(echo '{"tool_name":"SomeRandomTool","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "unknown tool → 🔧 Working"     "🔧 Working"    "${result}"
+
 # user-prompt handler
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
 result=$(echo '{"prompt":"Fix the login bug in the auth module"}' \

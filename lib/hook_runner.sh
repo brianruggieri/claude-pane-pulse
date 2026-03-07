@@ -213,6 +213,31 @@ event_status_from_payload() {
     printf '%s' "${status}"
 }
 
+# Classify unknown tools by parsing action verbs from the tool name.
+# MCP tools follow mcp__server__action naming; Claude tools use PascalCase.
+# Returns a status string or empty if no match.
+_classify_tool() {
+    local _tool="$1"
+    # Extract the action part: last segment after __ for MCP, or the full name
+    local _action="${_tool##*__}"
+    # Lowercase for matching (bash 3.2 compat: use tr instead of ${var,,})
+    _action=$(printf '%s' "${_action}" | tr '[:upper:]' '[:lower:]')
+
+    # Order matters: check more specific patterns first (send/comment before
+    # edit/add, since tools like add_issue_comment should be Sending not Editing)
+    if [[ "${_action}" =~ (send|post|comment|message|notify|publish) ]]; then
+        echo "📤 Sending"
+    elif [[ "${_action}" =~ (read|get|list|search|find|query|fetch|resolve|open|tree|info|status|show|view|log|describe) ]]; then
+        echo "📖 Reading"
+    elif [[ "${_action}" =~ (write|create|edit|update|delete|remove|move|rename|add|set|put|insert|replace|push_files|create_or_update) ]]; then
+        echo "✏️ Editing"
+    elif [[ "${_action}" =~ (navigate|click|snapshot|screenshot|hover|fill|select|browse|drag|type|press|resize|tab|install) ]]; then
+        echo "🌐 Browsing"
+    elif [[ "${_action}" =~ (run|execute|eval|invoke) ]]; then
+        echo "🖥️ Running"
+    fi
+}
+
 case "${mode}" in
     pre-tool)
         [[ -z "${CCP_STATUS_FILE:-}" ]] && exit 0
@@ -237,6 +262,9 @@ case "${mode}" in
             Task|Agent)
                 status="🤖 Delegating"
                 ;;
+            ToolSearch)
+                status="📖 Reading"
+                ;;
             Bash)
                 if [[ "${command_str}" =~ (jest|vitest|pytest|mocha|rspec|go[[:space:]]test|cargo[[:space:]]test|phpunit|bun[[:space:]]test|npm[[:space:]]test|yarn[[:space:]]test) ]]; then
                     status="🧪 Testing"
@@ -258,7 +286,8 @@ case "${mode}" in
                 ;;
             *)
                 if [[ -n "${tool}" ]]; then
-                    status="🔧 ${tool}"
+                    status=$(_classify_tool "${tool}")
+                    [[ -z "${status}" ]] && status="🔧 Working"
                 fi
                 ;;
         esac

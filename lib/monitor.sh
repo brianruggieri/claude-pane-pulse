@@ -55,7 +55,7 @@ status_to_priority() {
         echo 60
     elif [[ "${status}" =~ (Session\ started|Compacting|Subagent\ started|Teammate\ idle|Config\ changed|Worktree|Notification|Session\ ended) ]]; then
         echo 52
-    elif [[ "${status}" =~ (Reading|Browsing|Running) ]]; then
+    elif [[ "${status}" =~ (Reading|Browsing|Running|Sending|Working) ]]; then
         echo 55
     else
         echo 50
