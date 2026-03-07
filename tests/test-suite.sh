@@ -651,9 +651,11 @@ TMP_CONTEXT=$(mktemp)
 
 # Fixed PID used across all inline tests — mirrors the CCP_SESSION_PID export in bin/ccp
 TEST_PID=99999
+# Marker file created by hook_runner.sh after first inline capture
+INLINE_CAPTURED="${STATE_DIR}/inline_captured.${TEST_PID}"
 
 # post-tool: PID-scoped marker in echo output writes to context file
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}" "${INLINE_CAPTURED}"
 result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo CCP_TASK_SUMMARY_${TEST_PID}:Fix JWT Validation Bug\"},\"tool_response\":\"CCP_TASK_SUMMARY_${TEST_PID}:Fix JWT Validation Bug\"}" \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
@@ -661,7 +663,7 @@ result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo CCP_TA
 assert_equals "inline: PID-scoped marker extracted" "Fix JWT Validation Bug" "${result}"
 
 # post-tool: marker with surrounding whitespace is trimmed
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}" "${INLINE_CAPTURED}"
 result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo CCP_TASK_SUMMARY_${TEST_PID}:  Refactor Auth Module  \"},\"tool_response\":\"CCP_TASK_SUMMARY_${TEST_PID}:  Refactor Auth Module  \"}" \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
@@ -669,7 +671,7 @@ result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo CCP_TA
 assert_equals "inline: whitespace around summary trimmed" "Refactor Auth Module" "${result}"
 
 # post-tool: marker with quotes is cleaned
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}" "${INLINE_CAPTURED}"
 result=$(printf '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY_%s:Update Login UI"},"tool_response":"CCP_TASK_SUMMARY_%s:'\''Update Login UI'\''"}' \
         "${TEST_PID}" "${TEST_PID}" \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
@@ -727,7 +729,7 @@ result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"tool_respo
 assert_equals "inline: non-marker Bash output preserves context" "existing context" "${result}"
 
 # post-tool: PID-scoped summary + test pass — both context and status captured
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}" "${INLINE_CAPTURED}"
 result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"npm test\"},\"tool_response\":\"CCP_TASK_SUMMARY_${TEST_PID}:Fix Tests\n3 tests passed\"}" \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \

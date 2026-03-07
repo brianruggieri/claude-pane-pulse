@@ -391,6 +391,18 @@ main() {
     if [[ "${enable_debug_ccp}" = true ]]; then
         local log_dir="${STATE_DIR}/logs"
         mkdir -p "${log_dir}"
+
+        # Prune debug logs from dead sessions (PID embedded in filename)
+        local _old_log _old_pid
+        for _old_log in "${log_dir}"/debug.*.jsonl; do
+            [[ -f "${_old_log}" ]] || continue
+            _old_pid=$(basename "${_old_log}" .jsonl)
+            _old_pid="${_old_pid##*.}"
+            if [[ "${_old_pid}" =~ ^[0-9]+$ ]] && ! kill -0 "${_old_pid}" 2>/dev/null; then
+                rm -f "${_old_log}"
+            fi
+        done
+
         local log_ts
         log_ts=$(date +"%Y%m%d-%H%M%S")
         export CCP_DEBUG_LOG="${log_dir}/debug.${log_ts}.$$.jsonl"
@@ -431,7 +443,8 @@ main() {
         cleanup_session
         cleanup_monitor
         teardown_ccp_hooks "${ccp_settings_file}"
-        rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}" "${CCP_BRANCH_FILE:-}"
+        rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}" "${CCP_BRANCH_FILE:-}" \
+             "${STATE_DIR}/inline_captured.$$"
     }
     trap '_ccp_cleanup' EXIT
 
