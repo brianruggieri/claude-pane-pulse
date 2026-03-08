@@ -5,31 +5,32 @@
 [![macOS](https://img.shields.io/badge/macOS-Sonoma+-blue.svg)](https://www.apple.com/macos/)
 [![Bash](https://img.shields.io/badge/bash-3.2+-green.svg)](https://www.gnu.org/software/bash/)
 
-`ccp` wraps the Claude Code CLI so your terminal pane titles show what Claude is actually doing. Just run `ccp` and it reads your git branch, figures out a title, and keeps the pane updated in real time as Claude edits, builds, tests, and commits.
+Running multiple Claude Code agents in split panes? Without ccp every pane shows a generic title — you have to read the terminal output to know what's happening in each one. With ccp, the title bar tells you.
 
-![ccp live demo: pane title cycling through Thinking, Reading, Editing, Testing, Tests passed, Committed, and Standing by](docs/screenshots/demo.apng)
+![Four iTerm2 split panes with ccp — each title bar independently showing project, branch, task, and live status](docs/screenshots/demo-4pane.gif)
+
+Each pane updates on its own schedule. When one agent finishes and commits, that pane flips to `💾 Committed`. The others keep going.
+
+```
+auth-service (feat/oauth2)      | Fix JWT expiry | ✅ Tests passed
+dashboard-ui (fix/layout-shift) | Audit tests    | 🧪 Testing
+data-pipeline (feat/embeddings) | Fix TS errors  | 🔨 Building
+infra-tools (chore/tf-up)       | Plan Terraform | ⬆️ Pushing
+```
 
 ### Before ccp
 
-Generic titles. You have no idea what's happening in each pane.
+Generic titles. No idea what's happening in each pane.
 
 ![Before: four iTerm2 split panes showing generic "project — claude" titles with no task or status information](docs/screenshots/before.png)
 
 ### With ccp
 
-Each pane title shows the project, branch, current task, and live status — independently updated as Claude works.
+Each pane title is independent — project, branch, task, and live status updated in real time.
 
 ![After: four iTerm2 split panes with ccp titles showing "project (branch) | task | status" — Editing, Testing, Building, Reading](docs/screenshots/after.png)
 
-> **iTerm2 note:** ccp writes to OSC 1 (the per-pane icon title) so every split pane gets its own independent live title. No two panes share a title bar. See [Terminal Support](#terminal-support) for how other terminals compare.
-
-```
-my-app (main) | Fix auth bug | ✏️ Editing
-my-app (main) | Fix auth bug | 🧪 Testing
-my-app (main) | Fix auth bug | ✅ Tests passed
-my-app (main) | Fix auth bug | 💾 Committed
-my-app (main) | Fix auth bug | ☕ Recharging
-```
+> **Per-pane titles:** ccp writes to OSC 1 (the per-pane icon title) so every split pane updates independently. No two panes share a title. See [Terminal Support](#terminal-support) for other terminals.
 
 ## Features
 
@@ -97,7 +98,7 @@ cd claude-code-pulse
 ./install.sh
 ```
 
-Installs to `~/.local/share/ccp/` and symlinks `~/bin/ccp`.
+Installs to `~/.local/share/ccp/` and symlinks `~/bin/ccp` and `~/bin/ccp-watch`. If `~/bin` is not already in your `$PATH`, the installer prints the one line to add — it does not modify your shell profile. No sudo, no system-wide changes, no telemetry. Network calls only to Anthropic — and only if you opt in to `--ai-context`.
 
 ## Usage
 
