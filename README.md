@@ -166,6 +166,8 @@ Startup     my-app (main) | 👋 Welcome back, Brian
 
 `💤 Idle` · `☕ Recharging` · `🧘 Centering` · `🎯 Ready` · `🫡 Standing by` · `💡 Listening` · `🌿 At rest` · `👀 Watching` · `🌊 Drifting` · `✨ Floating`
 
+![Single pane cycling through ccp statuses — Editing, Testing, Tests passed, Committed, Pushing, Idle](docs/screenshots/status-lifecycle.apng)
+
 ## Status Reference
 
 ### Both profiles
