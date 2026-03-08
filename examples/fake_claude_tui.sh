@@ -135,9 +135,21 @@ case "${SCENARIO}" in
         TASK="Fix JWT expiry check"
         STATUS_LABEL="✅ Tests passed"
         ;;
+    committed)
+        PROJECT="auth-service"
+        BRANCH="feat/oauth2"
+        TASK="Fix JWT expiry"
+        STATUS_LABEL="💾 Committed"
+        ;;
+    pushing)
+        PROJECT="infra-tools"
+        BRANCH="chore/tf-up"
+        TASK="Plan Terraform"
+        STATUS_LABEL="⬆️ Pushing"
+        ;;
     *)
         echo "Unknown scenario: ${SCENARIO}" >&2
-        echo "Valid: editing testing building thinking complete" >&2
+        echo "Valid: editing testing building thinking complete committed pushing" >&2
         exit 1
         ;;
 esac
@@ -398,7 +410,11 @@ if [[ -n "${TITLE_FILE}" || -n "${SCENARIO_FILE}" ]]; then
                 _render_scenario "${_new_s}"
             fi
         fi
-        read -r -t 0.3 2>/dev/null || true
+        if [[ -t 0 ]]; then
+            read -r -t 0.3 2>/dev/null || true
+        else
+            sleep 0.3
+        fi
     done
 else
     # Static mode: refresh the fixed title every ~2s.

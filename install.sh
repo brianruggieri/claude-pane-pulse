@@ -76,8 +76,7 @@ if [[ ":${PATH}:" != *":${BIN_DIR}:"* ]]; then
     # shellcheck disable=SC2016  # intentional: show literal ${HOME} to user
     echo '       export PATH="${HOME}/bin:${PATH}"'
     echo ""
-    echo "     Then reload your shell:"
-    echo "       source ~/.zshrc"
+    echo "     Then open a new terminal (or source the file you edited)."
 else
     echo -e "  ${BLUE}ℹ${NC}  ~/bin is already in your PATH"
 fi

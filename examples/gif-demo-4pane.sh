@@ -49,6 +49,9 @@ osascript -e 'tell application "iTerm2" to return "ok"' &>/dev/null \
 command -v magick &>/dev/null \
     || die "ImageMagick not found. Install with: brew install imagemagick"
 
+command -v python3 &>/dev/null \
+    || die "python3 not found. Install with: brew install python3"
+
 mkdir -p "${SHOTS_DIR}" "${FRAMES_DIR}"
 rm -f "${FRAMES_DIR}"/frame_*.png "${FRAMES_DIR}"/processed_*.png \
       "${FRAMES_DIR}"/palette.png
@@ -323,10 +326,11 @@ for entry in "${FRAMES[@]}"; do
 
     # Wait for iTerm2 to render. Extra time when content changed (re-render cycle).
     if $scenario_changed; then
-        sleep 1.4  # scenario poll (0.3s) + render + iTerm2 repaint
+        render_wait=1.4  # scenario poll (0.3s) + render + iTerm2 repaint
     else
-        sleep 0.8
+        render_wait=0.8
     fi
+    sleep "${render_wait}"
 
     outfile="${FRAMES_DIR}/frame_${padded}.png"
     capture_frame "${CG}" "${outfile}"
@@ -334,8 +338,8 @@ for entry in "${FRAMES[@]}"; do
     FRAME_DELAYS+=("${delay}")
     info "  Captured: ${outfile}"
 
-    # Hold for remaining frame duration (already spent 0.8-1.4s above)
-    hold_s=$(python3 -c "d=int('${delay}')/100; r=d-1.4; print(max(r,0))")
+    # Hold for remaining frame duration (already spent render_wait seconds above)
+    hold_s=$(python3 -c "d=int('${delay}')/100; r=d-${render_wait}; print(max(r,0))")
     [[ "${hold_s}" != "0" ]] && sleep "${hold_s}"
 done
 
