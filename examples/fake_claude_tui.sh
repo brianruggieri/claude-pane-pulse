@@ -27,11 +27,15 @@
 
 SCENARIO="editing"
 TITLE_MODE="after"
+TITLE_FILE=""
+SCENARIO_FILE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --scenario)   SCENARIO="$2";   shift 2 ;;
-        --title-mode) TITLE_MODE="$2"; shift 2 ;;
+        --scenario)      SCENARIO="$2";      shift 2 ;;
+        --title-mode)    TITLE_MODE="$2";    shift 2 ;;
+        --title-file)    TITLE_FILE="$2";    shift 2 ;;
+        --scenario-file) SCENARIO_FILE="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
@@ -131,9 +135,21 @@ case "${SCENARIO}" in
         TASK="Fix JWT expiry check"
         STATUS_LABEL="✅ Tests passed"
         ;;
+    committed)
+        PROJECT="auth-service"
+        BRANCH="feat/oauth2"
+        TASK="Fix JWT expiry"
+        STATUS_LABEL="💾 Committed"
+        ;;
+    pushing)
+        PROJECT="infra-tools"
+        BRANCH="chore/tf-up"
+        TASK="Plan Terraform"
+        STATUS_LABEL="⬆️ Pushing"
+        ;;
     *)
         echo "Unknown scenario: ${SCENARIO}" >&2
-        echo "Valid: editing testing building thinking complete" >&2
+        echo "Valid: editing testing building thinking complete committed pushing" >&2
         exit 1
         ;;
 esac
@@ -302,13 +318,64 @@ render_complete() {
     printf "  ${DIM}❯${R} \n"
 }
 
-case "${SCENARIO}" in
-    editing)  render_editing  ;;
-    testing)  render_testing  ;;
-    building) render_building ;;
-    thinking) render_thinking ;;
-    complete) render_complete ;;
-esac
+render_committed() {
+    blank
+    printf "  ${DIM}❯ commit the fix${R}\n"
+    blank
+    printf "  ${DGRN}  PASS  src/auth/__tests__/middleware.test.ts${R}\n"
+    printf "  ${DGRN}  PASS  src/auth/__tests__/jwt.test.ts${R}\n"
+    printf "  ${DGRN}  Tests: 18 passed, 18 total${R}\n"
+    blank
+    printf "  ${BULLET} ${BOLD}Bash(git add -A && git commit -m 'fix: validate JWT exp claim in middleware')${R}\n"
+    blank
+    printf "  ${DIM}  [feat/oauth2 3f9a1c2] fix: validate JWT exp claim in middleware${R}\n"
+    printf "  ${DIM}   1 file changed, 8 insertions(+), 2 deletions(-)${R}\n"
+    blank
+    printf "  Committed as ${CYN}3f9a1c2${R}. Ready to push.\n"
+    blank
+    printf "  ${DIM}❯${R} \n"
+}
+
+render_pushing() {
+    blank
+    printf "  ${DIM}❯ push the branch and open a PR${R}\n"
+    blank
+    printf "  ${BULLET} Edit(terraform/main.tf)\n"
+    diff_rule "terraform/main.tf · aws_s3_bucket split"
+    printf "  ${DRED}  47 -   resource \"aws_s3_bucket\" \"logs\" {${R}\n"
+    printf "  ${DGRN}  47 +   resource \"aws_s3_bucket\" \"logs\" {}${R}\n"
+    printf "  ${DGRN}  48 +   resource \"aws_s3_bucket_versioning\" \"logs\" {${R}\n"
+    printf "  ${DGRN}  49 +     bucket = aws_s3_bucket.logs.id${R}\n"
+    diff_rule
+    blank
+    printf "  ${BULLET} ${BOLD}Bash(git push origin chore/tf-up)${R}\n"
+    blank
+    printf "  ${DIM}  Enumerating objects: 7, done.${R}\n"
+    printf "  ${DIM}  Counting objects: 100%% (7/7), done.${R}\n"
+    printf "  ${DIM}  Writing objects: 100%% (4/4), 1.21 KiB | 1.21 MiB/s, done.${R}\n"
+    printf "  ${DIM}  To github.com:acme/infra-tools.git${R}\n"
+    printf "  ${DGRN}   * [new branch]  chore/tf-up -> chore/tf-up${R}\n"
+    blank
+    printf "  ${SPIN} Pushing…\n"
+    blank
+    printf "  ${DIM}❯${R} \n"
+}
+
+_render_scenario() {
+    tput clear 2>/dev/null || printf '\033[2J\033[H'
+    tput civis 2>/dev/null || true
+    case "$1" in
+        editing)   render_editing   ;;
+        testing)   render_testing   ;;
+        building)  render_building  ;;
+        thinking)  render_thinking  ;;
+        complete)  render_complete  ;;
+        committed) render_committed ;;
+        pushing)   render_pushing   ;;
+    esac
+}
+
+_render_scenario "${SCENARIO}"
 
 # ── hold for screenshot ────────────────────────────────────────────────────────
 
@@ -325,15 +392,38 @@ trap 'tput cnorm 2>/dev/null || true' EXIT INT TERM
 # Suppress zsh/oh-my-zsh auto-title so it doesn't overwrite our OSC title
 export DISABLE_AUTO_TITLE=true
 
-# Refresh the title every ~2s. When stdin is a TTY, bash's built-in read
-# timeout blocks without spawning any process (keeps auto-title hooks quiet).
-# When stdin is not a TTY (e.g. piped by the screenshot harness), fall back
-# to sleep so the loop actually runs ~every 2s instead of spinning.
-while true; do
-    set_title "${_pane_title}"
-    if [[ -t 0 ]]; then
-        read -r -t 2 2>/dev/null || true
-    else
-        sleep 2
-    fi
-done
+# Dynamic mode: orchestrator drives titles via TITLE_FILE and/or content via
+# SCENARIO_FILE. Both files are polled every 0.3s. When SCENARIO_FILE changes,
+# the screen is cleared and the new scenario is rendered in-place — no process
+# restart, no shell prompt flash. Used by gif-demo-4pane.sh.
+if [[ -n "${TITLE_FILE}" || -n "${SCENARIO_FILE}" ]]; then
+    _last_scenario="${SCENARIO}"
+    while true; do
+        if [[ -n "${TITLE_FILE}" ]]; then
+            _t="$(cat "${TITLE_FILE}" 2>/dev/null || true)"
+            [[ -n "${_t}" ]] && set_title "${_t}"
+        fi
+        if [[ -n "${SCENARIO_FILE}" ]]; then
+            _new_s="$(cat "${SCENARIO_FILE}" 2>/dev/null || true)"
+            if [[ -n "${_new_s}" && "${_new_s}" != "${_last_scenario}" ]]; then
+                _last_scenario="${_new_s}"
+                _render_scenario "${_new_s}"
+            fi
+        fi
+        if [[ -t 0 ]]; then
+            read -r -t 0.3 2>/dev/null || true
+        else
+            sleep 0.3
+        fi
+    done
+else
+    # Static mode: refresh the fixed title every ~2s.
+    while true; do
+        set_title "${_pane_title}"
+        if [[ -t 0 ]]; then
+            read -r -t 2 2>/dev/null || true
+        else
+            sleep 2
+        fi
+    done
+fi

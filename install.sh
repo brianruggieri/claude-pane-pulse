@@ -66,51 +66,19 @@ ln -s "${INSTALL_DIR}/bin/ccp" "${BIN_DIR}/ccp"
 ln -s "${INSTALL_DIR}/bin/ccp-watch" "${BIN_DIR}/ccp-watch"
 echo -e "  ${GREEN}✓${NC} Symlinks created: ${BIN_DIR}/ccp, ${BIN_DIR}/ccp-watch"
 
-# ── Update PATH in shell profile ──────────────────────────────────────────────
-
-add_path_to_profile() {
-    local profile="$1"
-    # shellcheck disable=SC2016  # intentional: literal ${HOME} for user's shell profile
-    local path_line='export PATH="${HOME}/bin:${PATH}"'
-
-    if [[ -f "${profile}" ]]; then
-        if ! grep -q 'HOME.*bin.*PATH\|PATH.*HOME.*bin' "${profile}" 2>/dev/null; then
-            {
-                echo ""
-                echo "# Added by claude-code-pulse installer"
-                echo "${path_line}"
-            } >> "${profile}"
-            echo -e "  ${GREEN}✓${NC} Added ~/bin to PATH in ${profile}"
-            return 0
-        else
-            echo -e "  ${BLUE}ℹ${NC} ~/bin already in PATH (${profile})"
-            return 0
-        fi
-    fi
-    return 1
-}
+# ── PATH reminder ─────────────────────────────────────────────────────────────
 
 if [[ ":${PATH}:" != *":${BIN_DIR}:"* ]]; then
     echo ""
-    echo -e "${BLUE}Updating shell PATH...${NC}"
-
-    # Try common shell profiles
-    added=false
-    for profile in "${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.profile"; do
-        if add_path_to_profile "${profile}"; then
-            added=true
-            break
-        fi
-    done
-
-    if [[ "${added}" = false ]]; then
-        echo -e "  ${YELLOW}⚠${NC} Could not find a shell profile to update."
-        echo "  Add this line manually to your shell profile:"
-        # shellcheck disable=SC2016  # intentional: show literal ${HOME} to user
-        echo '    export PATH="${HOME}/bin:${PATH}"'
-    fi
+    echo -e "${YELLOW}  ⚠  ~/bin is not in your PATH.${NC}"
+    echo "     Add this line to your shell profile (~/.zshrc, ~/.bashrc, etc.):"
+    echo ""
+    # shellcheck disable=SC2016  # intentional: show literal ${HOME} to user
+    echo '       export PATH="${HOME}/bin:${PATH}"'
+    echo ""
+    echo "     Then open a new terminal (or source the file you edited)."
 else
-    echo -e "  ${BLUE}ℹ${NC} ~/bin is already in your PATH"
+    echo -e "  ${BLUE}ℹ${NC}  ~/bin is already in your PATH"
 fi
 
 # ── Check dependencies ────────────────────────────────────────────────────────
