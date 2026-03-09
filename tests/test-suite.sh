@@ -219,6 +219,7 @@ echo "📖 Reading" > "${STATE_DIR}/status.999999999.txt"
 echo "some context" > "${STATE_DIR}/context.999999999.txt"
 echo "main" > "${STATE_DIR}/branch.999999999.txt"
 echo "999999999" > "${STATE_DIR}/monitor.999999999.pid"
+echo "2" > "${STATE_DIR}/agents.999999999.txt"
 # Inject the dead session so prune has something to remove
 echo '[{"title":"Orphan","directory":"/tmp/orphan","started":"2026-01-01T00:00:00Z","pid":999999999}]' \
     > "${SESSION_FILE}"
@@ -235,6 +236,9 @@ assert_equals "prune_dead_sessions removes orphan branch file" "0" "${orphan_bra
 orphan_monitor_exists=0
 [[ -f "${STATE_DIR}/monitor.999999999.pid" ]] && orphan_monitor_exists=1
 assert_equals "prune_dead_sessions removes orphan monitor file" "0" "${orphan_monitor_exists}"
+orphan_agents_exists=0
+[[ -f "${STATE_DIR}/agents.999999999.txt" ]] && orphan_agents_exists=1
+assert_equals "prune_dead_sessions removes orphan agents file" "0" "${orphan_agents_exists}"
 
 # ── Tests: status_to_priority ─────────────────────────────────────────────────
 

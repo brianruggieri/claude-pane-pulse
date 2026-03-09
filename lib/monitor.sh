@@ -234,6 +234,7 @@ title_updater() {
                     local _bg_count=0
                     if [[ -n "${agents_file}" && -f "${agents_file}" ]]; then
                         _bg_count=$(< "${agents_file}") || _bg_count=0
+                        _bg_count=$(( _bg_count + 0 ))  # coerce to int; empty/corrupt → 0
                     fi
 
                     if [[ "${_bg_count}" -gt 0 ]]; then

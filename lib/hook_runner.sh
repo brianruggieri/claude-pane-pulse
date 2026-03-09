@@ -521,9 +521,10 @@ case "${mode}" in
 
         status=$(event_status_from_payload "${event_name}" "${json_input}")
 
-        # Background agent counter — updated directly here (not inside the function)
-        # so filesystem writes are not swallowed by the $() that captures the
-        # function's stdout.
+        # Background agent counter — updated directly here rather than inside
+        # event_status_from_payload() because that function is called via $(),
+        # which runs it in a subshell: variable mutations don't propagate back,
+        # and on bash 3.2 $(< file) returns empty inside a subprocess context.
         if [[ -n "${CCP_AGENTS_FILE:-}" ]]; then
             case "${event_name}" in
                 SubagentStart)
