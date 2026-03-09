@@ -209,8 +209,6 @@ With `--status-profile verbose`, lifecycle events also show up:
 | ✅ | Subagent finished | SubagentStop | 52 |
 | 👥 | Teammate idle | TeammateIdle | 52 |
 | ⚙️ | Config changed | ConfigChange | 52 |
-| 🌿 | Worktree created | WorktreeCreate | 52 |
-| 🧹 | Worktree removed | WorktreeRemove | 52 |
 | 🔔 | *EventName* | Any other event | 52 |
 
 ## Status Profiles

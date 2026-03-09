@@ -240,8 +240,8 @@ assert_eq "setup: SubagentStart has exactly 1 entry" "1" "${sub_start_count}"
 assert_eq "setup: SubagentStop has exactly 1 entry" "1" "${sub_stop_count}"
 assert_eq "setup: TeammateIdle has exactly 1 entry" "1" "${teammate_idle_count}"
 assert_eq "setup: ConfigChange has exactly 1 entry" "1" "${config_change_count}"
-assert_eq "setup: WorktreeCreate has exactly 1 entry" "1" "${worktree_create_count}"
-assert_eq "setup: WorktreeRemove has exactly 1 entry" "1" "${worktree_remove_count}"
+assert_eq "setup: WorktreeCreate not registered (lifecycle hook)" "0" "${worktree_create_count}"
+assert_eq "setup: WorktreeRemove not registered (lifecycle hook)" "0" "${worktree_remove_count}"
 
 # Run setup again (simulates restart without teardown) — should still have 1 of each
 settings_file2=$(setup_ccp_hooks "${HOOKS_TEST_DIR}" "${CCP_HOOK_RUNNER}")

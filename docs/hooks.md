@@ -25,10 +25,14 @@ You usually do not need to configure hooks manually.
 - `SubagentStop`
 - `TeammateIdle`
 - `ConfigChange`
-- `WorktreeCreate`
-- `WorktreeRemove`
 
 All handlers call `lib/hook_runner.sh` asynchronously with a 5000ms timeout and always return success.
+
+> **Note:** `WorktreeCreate` and `WorktreeRemove` are **not** registered by `ccp`. These are lifecycle
+> hooks that replace Claude Code's native git worktree operations — the hook must print the new worktree
+> path to stdout. Registering them as async status-only handlers (with no stdout) breaks worktree
+> isolation (`isolation: "worktree"` on Agent tool calls). Claude Code's built-in implementation handles
+> both hooks correctly when no override is present.
 
 ## Welcome Status
 
@@ -61,8 +65,6 @@ Everything in quiet, plus lifecycle/internal events:
 - `✅ Subagent finished`
 - `👥 Teammate idle`
 - `⚙️ Config changed`
-- `🌿 Worktree created`
-- `🧹 Worktree removed`
 - Generic notification/event fallbacks (`🔔 ...`)
 
 ## Notes
