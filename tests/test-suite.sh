@@ -219,6 +219,7 @@ echo "📖 Reading" > "${STATE_DIR}/status.999999999.txt"
 echo "some context" > "${STATE_DIR}/context.999999999.txt"
 echo "main" > "${STATE_DIR}/branch.999999999.txt"
 echo "999999999" > "${STATE_DIR}/monitor.999999999.pid"
+echo "2" > "${STATE_DIR}/agents.999999999.txt"
 # Inject the dead session so prune has something to remove
 echo '[{"title":"Orphan","directory":"/tmp/orphan","started":"2026-01-01T00:00:00Z","pid":999999999}]' \
     > "${SESSION_FILE}"
@@ -235,6 +236,9 @@ assert_equals "prune_dead_sessions removes orphan branch file" "0" "${orphan_bra
 orphan_monitor_exists=0
 [[ -f "${STATE_DIR}/monitor.999999999.pid" ]] && orphan_monitor_exists=1
 assert_equals "prune_dead_sessions removes orphan monitor file" "0" "${orphan_monitor_exists}"
+orphan_agents_exists=0
+[[ -f "${STATE_DIR}/agents.999999999.txt" ]] && orphan_agents_exists=1
+assert_equals "prune_dead_sessions removes orphan agents file" "0" "${orphan_agents_exists}"
 
 # ── Tests: status_to_priority ─────────────────────────────────────────────────
 
@@ -260,6 +264,7 @@ assert_equals "Running → 55"        "55"  "$(status_to_priority "🖥️ Runni
 assert_equals "Reading → 55"        "55"  "$(status_to_priority "📖 Reading")"
 assert_equals "Browsing → 55"       "55"  "$(status_to_priority "🌐 Browsing")"
 assert_equals "Session started → 52" "52" "$(status_to_priority "🚀 Session started")"
+assert_equals "Monitoring → 20"     "20"  "$(status_to_priority "📡 Monitoring")"
 assert_equals "unknown → 50"        "50"  "$(status_to_priority "🔧 SomeTool")"
 
 # ── Tests: hook_runner.sh ─────────────────────────────────────────────────────
@@ -620,15 +625,75 @@ result=$(echo '{}' \
       bash "${LIB_DIR}/hook_runner.sh" event PreCompact && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "event verbose: PreCompact → 🧠 Compacting" "🧠 Compacting" "${result}"
 
+TMP_AGENTS="${STATE_DIR}/test-agents.txt"
+rm -f "${TMP_AGENTS}"
+
+# SubagentStart increments counter: 0 → 1
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_AGENTS_FILE="${TMP_AGENTS}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event SubagentStart && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: SubagentStart → 🤖 Subagent started" "🤖 Subagent started" "${result}"
+result=$(cat "${TMP_AGENTS}" 2>/dev/null || true)
+assert_equals "SubagentStart: counter 0→1" "1" "${result}"
+
+# SubagentStart increments again: 1 → 2
+echo '1' > "${TMP_AGENTS}"
+echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_AGENTS_FILE="${TMP_AGENTS}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event SubagentStart
+result=$(cat "${TMP_AGENTS}" 2>/dev/null || true)
+assert_equals "SubagentStart: counter 1→2" "2" "${result}"
+
+# SubagentStop decrements: 2 → 1
+echo '2' > "${TMP_AGENTS}"
+echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_AGENTS_FILE="${TMP_AGENTS}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event SubagentStop
+result=$(cat "${TMP_AGENTS}" 2>/dev/null || true)
+assert_equals "SubagentStop: counter 2→1" "1" "${result}"
+
+# SubagentStop at 1 removes the file: 1 → gone
+echo '1' > "${TMP_AGENTS}"
+echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_AGENTS_FILE="${TMP_AGENTS}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event SubagentStop
+if [[ ! -f "${TMP_AGENTS}" ]]; then
+    pass "SubagentStop: counter 1→0 removes agents file"
+else
+    fail "SubagentStop: counter 1→0 removes agents file" "file still exists with: $(cat "${TMP_AGENTS}")"
+fi
+
+# SubagentStop with no agents file is a safe no-op (never goes negative)
+rm -f "${TMP_AGENTS}"
+echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_AGENTS_FILE="${TMP_AGENTS}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event SubagentStop
+if [[ ! -f "${TMP_AGENTS}" ]]; then
+    pass "SubagentStop: no agents file → safe no-op, no negative value"
+else
+    fail "SubagentStop: no agents file → safe no-op, no negative value" "file created with: $(cat "${TMP_AGENTS}")"
+fi
+
+# SubagentStop in verbose still writes status even after decrement
+echo '1' > "${TMP_AGENTS}"
+result=$(echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_AGENTS_FILE="${TMP_AGENTS}" CCP_STATUS_PROFILE=verbose \
+      bash "${LIB_DIR}/hook_runner.sh" event SubagentStop && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "event verbose: SubagentStop → ✅ Subagent finished" "✅ Subagent finished" "${result}"
+
+# No CCP_AGENTS_FILE set → SubagentStart/Stop are no-ops for counter, verbose status still fires
+rm -f "${TMP_AGENTS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event SubagentStart && cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_equals "event verbose: SubagentStart → 🤖 Subagent started" "🤖 Subagent started" "${result}"
+assert_equals "SubagentStart: no CCP_AGENTS_FILE → verbose status still written" "🤖 Subagent started" "${result}"
+if [[ ! -f "${TMP_AGENTS}" ]]; then
+    pass "SubagentStart: no CCP_AGENTS_FILE → no counter file created"
+else
+    fail "SubagentStart: no CCP_AGENTS_FILE → no counter file created" "unexpected file: $(cat "${TMP_AGENTS}")"
+fi
 
-result=$(echo '{}' \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
-      bash "${LIB_DIR}/hook_runner.sh" event SubagentStop && cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_equals "event verbose: SubagentStop → ✅ Subagent finished" "✅ Subagent finished" "${result}"
+rm -f "${TMP_AGENTS}"
 
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \

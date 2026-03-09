@@ -62,8 +62,8 @@ prune_dead_sessions() {
     # Clean orphan state files for dead PIDs
     local f pid
     for f in "${STATE_DIR}"/status.*.txt "${STATE_DIR}"/context.*.txt \
-             "${STATE_DIR}"/branch.*.txt "${STATE_DIR}"/monitor.*.pid \
-             "${STATE_DIR}"/inline_captured.*; do
+             "${STATE_DIR}"/branch.*.txt "${STATE_DIR}"/agents.*.txt \
+             "${STATE_DIR}"/monitor.*.pid "${STATE_DIR}"/inline_captured.*; do
         [[ -f "${f}" ]] || continue
         pid=$(basename "${f}" | grep -o '[0-9]\+') || continue
         if ! kill -0 "${pid}" 2>/dev/null; then
