@@ -57,6 +57,8 @@ status_to_priority() {
         echo 52
     elif [[ "${status}" =~ (Reading|Browsing|Running|Sending|Working) ]]; then
         echo 55
+    elif [[ "${status}" =~ "📡 Monitoring" ]]; then
+        echo 20
     else
         echo 50
     fi
@@ -77,6 +79,7 @@ title_updater() {
         local status_file="${CCP_STATUS_FILE:-}"
         local context_file="${CCP_CONTEXT_FILE:-}"
         local branch_file="${CCP_BRANCH_FILE:-}"
+        local agents_file="${CCP_AGENTS_FILE:-}"
         local debug_log="${CCP_DEBUG_LOG:-}"
         local debug_jsonl="${CCP_DEBUG_JSONL:-}"
 
@@ -215,7 +218,7 @@ title_updater() {
                             *Awaiting\ approval*|*Input\ needed*|*Notification*|\
                             *Session\ started*|*Session\ ended*|*Compacting*|\
                             *Subagent*|*Teammate*|*Config\ changed*|*Worktree*|\
-                            *Welcome\ back*)
+                            *Welcome\ back*|*Monitoring*)
                                 ;; # known status — ok
                             *)
                                 _mon_dbg "unknown_status" "status=${hook_status}" "len=${#hook_status}"
@@ -225,13 +228,30 @@ title_updater() {
                     fi
                     _prev_active=true
                 else
-                    # Advance to next idle phrase on each transition from active → idle
-                    if [[ "${_prev_active}" = true ]]; then
-                        _idle_idx=$(( (_idle_idx + 1) % ${#_idle_phrases[@]} ))
-                        _prev_active=false
-                        _mon_dbg "idle_transition" "prev_status=${current_context}" "idle_phrase=${_idle_phrases[${_idle_idx}]}"
+                    # Check for running background agents before going idle.
+                    # SubagentStart increments agents_file; SubagentStop decrements it.
+                    # When count > 0 Claude is idle but agents are still working.
+                    local _bg_count=0
+                    if [[ -n "${agents_file}" && -f "${agents_file}" ]]; then
+                        _bg_count=$(< "${agents_file}") || _bg_count=0
                     fi
-                    current_context="${_idle_phrases[${_idle_idx}]}"
+
+                    if [[ "${_bg_count}" -gt 0 ]]; then
+                        # Stay in pseudo-active state — don't advance idle index or
+                        # flip _prev_active so the transition fires correctly later.
+                        if [[ "${current_context}" != "📡 Monitoring" ]]; then
+                            _mon_dbg "monitoring_start" "agent_count=${_bg_count}"
+                        fi
+                        current_context="📡 Monitoring"
+                    else
+                        # Normal idle transition
+                        if [[ "${_prev_active}" = true ]]; then
+                            _idle_idx=$(( (_idle_idx + 1) % ${#_idle_phrases[@]} ))
+                            _prev_active=false
+                            _mon_dbg "idle_transition" "prev_status=${current_context}" "idle_phrase=${_idle_phrases[${_idle_idx}]}"
+                        fi
+                        current_context="${_idle_phrases[${_idle_idx}]}"
+                    fi
                 fi
 
                 local new_summary=""

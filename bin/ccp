@@ -444,7 +444,7 @@ main() {
         cleanup_monitor
         teardown_ccp_hooks "${ccp_settings_file}"
         rm -f "${CCP_STATUS_FILE:-}" "${CCP_CONTEXT_FILE:-}" "${CCP_BRANCH_FILE:-}" \
-             "${STATE_DIR}/inline_captured.$$"
+             "${CCP_AGENTS_FILE:-}" "${STATE_DIR}/inline_captured.$$"
     }
     trap '_ccp_cleanup' EXIT
 
@@ -491,6 +491,7 @@ main() {
         export CCP_STATUS_FILE="${STATE_DIR}/status.$$.txt"
         export CCP_CONTEXT_FILE="${STATE_DIR}/context.$$.txt"
         export CCP_BRANCH_FILE="${STATE_DIR}/branch.$$.txt"
+        export CCP_AGENTS_FILE="${STATE_DIR}/agents.$$.txt"
         export CCP_HOOK_RUNNER="${LIB_DIR}/hook_runner.sh"
 
         # Export AI context opt-in flag for hook_runner.sh

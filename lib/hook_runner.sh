@@ -520,6 +520,36 @@ case "${mode}" in
         fi
 
         status=$(event_status_from_payload "${event_name}" "${json_input}")
+
+        # Background agent counter — updated directly here (not inside the function)
+        # so filesystem writes are not swallowed by the $() that captures the
+        # function's stdout.
+        if [[ -n "${CCP_AGENTS_FILE:-}" ]]; then
+            case "${event_name}" in
+                SubagentStart)
+                    # Use cat, not $(< file) — bash 3.2 $(< file) returns empty
+                    # when hook_runner.sh runs as a subprocess.
+                    _sa_count=$(cat "${CCP_AGENTS_FILE}" 2>/dev/null || echo 0)
+                    _sa_count=$(( _sa_count + 0 ))  # coerce to int; empty → 0
+                    atomic_write "${CCP_AGENTS_FILE}" "$((_sa_count + 1))"
+                    _dbg_event "agent_count_inc" "new_count=$((_sa_count + 1))"
+                    ;;
+                SubagentStop)
+                    # Guard against going negative: SubagentStop can fire for
+                    # agents launched before this session started.
+                    _sa_count=$(cat "${CCP_AGENTS_FILE}" 2>/dev/null || echo 1)
+                    _sa_count=$(( _sa_count + 0 ))  # coerce to int; empty → 0
+                    _sa_new=$((_sa_count - 1))
+                    if [[ "${_sa_new}" -le 0 ]]; then
+                        rm -f "${CCP_AGENTS_FILE}"
+                    else
+                        atomic_write "${CCP_AGENTS_FILE}" "${_sa_new}"
+                    fi
+                    _dbg_event "agent_count_dec" "new_count=${_sa_new}"
+                    ;;
+            esac
+        fi
+
         _dbg_event "lifecycle_event" "event_name=${event_name}" "profile=${status_profile}" "status=${status}"
         _dbg "event=${event_name} profile=${status_profile} status=${status}"
         [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
