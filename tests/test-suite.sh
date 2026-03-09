@@ -588,12 +588,12 @@ assert_equals "event verbose: ConfigChange → ⚙️ Config changed" "⚙️ Co
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event WorktreeCreate && cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_equals "event verbose: WorktreeCreate → 🌿 Worktree created" "🌿 Worktree created" "${result}"
+assert_equals "event verbose: WorktreeCreate fallback → 🔔 WorktreeCreate" "🔔 WorktreeCreate" "${result}"
 
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event WorktreeRemove && cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_equals "event verbose: WorktreeRemove → 🧹 Worktree removed" "🧹 Worktree removed" "${result}"
+assert_equals "event verbose: WorktreeRemove fallback → 🔔 WorktreeRemove" "🔔 WorktreeRemove" "${result}"
 
 result=$(echo '{"message":"Background refresh complete"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
@@ -668,10 +668,10 @@ config_change_count=$(jq '.hooks.ConfigChange | length' "${settings_path}" 2>/de
 assert_equals "ConfigChange hook injected" "1" "${config_change_count}"
 
 worktree_create_count=$(jq '.hooks.WorktreeCreate | length' "${settings_path}" 2>/dev/null || echo 0)
-assert_equals "WorktreeCreate hook injected" "1" "${worktree_create_count}"
+assert_equals "WorktreeCreate not injected (lifecycle hook, not notification)" "0" "${worktree_create_count}"
 
 worktree_remove_count=$(jq '.hooks.WorktreeRemove | length' "${settings_path}" 2>/dev/null || echo 0)
-assert_equals "WorktreeRemove hook injected" "1" "${worktree_remove_count}"
+assert_equals "WorktreeRemove not injected (lifecycle hook, not notification)" "0" "${worktree_remove_count}"
 
 # hook command references the runner
 hook_cmd=$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "${settings_path}" 2>/dev/null || echo "")

@@ -198,16 +198,6 @@ setup_ccp_hooks() {
              {"_ccp_pid": $pid, "hooks": [
                  {"type": "command", "command": ("bash \"" + $runner + "\" event ConfigChange"), "timeout": 5000, "async": true}
              ]}
-         ]) |
-         .hooks.WorktreeCreate = ((.hooks.WorktreeCreate // []) + [
-             {"_ccp_pid": $pid, "hooks": [
-                 {"type": "command", "command": ("bash \"" + $runner + "\" event WorktreeCreate"), "timeout": 5000, "async": true}
-             ]}
-         ]) |
-         .hooks.WorktreeRemove = ((.hooks.WorktreeRemove // []) + [
-             {"_ccp_pid": $pid, "hooks": [
-                 {"type": "command", "command": ("bash \"" + $runner + "\" event WorktreeRemove"), "timeout": 5000, "async": true}
-             ]}
          ])
         ') || return 0
 

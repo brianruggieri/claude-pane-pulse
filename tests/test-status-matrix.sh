@@ -72,8 +72,8 @@ assert_eq "verbose SubagentStart" "🤖 Subagent started" "$(run_event verbose S
 assert_eq "verbose SubagentStop" "✅ Subagent finished" "$(run_event verbose SubagentStop '{}')"
 assert_eq "verbose TeammateIdle" "👥 Teammate idle" "$(run_event verbose TeammateIdle '{}')"
 assert_eq "verbose ConfigChange" "⚙️ Config changed" "$(run_event verbose ConfigChange '{}')"
-assert_eq "verbose WorktreeCreate" "🌿 Worktree created" "$(run_event verbose WorktreeCreate '{}')"
-assert_eq "verbose WorktreeRemove" "🧹 Worktree removed" "$(run_event verbose WorktreeRemove '{}')"
+assert_eq "verbose WorktreeCreate fallback" "🔔 WorktreeCreate" "$(run_event verbose WorktreeCreate '{}')"
+assert_eq "verbose WorktreeRemove fallback" "🔔 WorktreeRemove" "$(run_event verbose WorktreeRemove '{}')"
 assert_eq "verbose unknown event fallback" "🔔 UnknownFutureEvent" "$(run_event verbose UnknownFutureEvent '{}')"
 
 echo ""

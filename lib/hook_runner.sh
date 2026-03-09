@@ -197,12 +197,6 @@ event_status_from_payload() {
         ConfigChange)
             is_verbose_profile && status="⚙️ Config changed"
             ;;
-        WorktreeCreate)
-            is_verbose_profile && status="🌿 Worktree created"
-            ;;
-        WorktreeRemove)
-            is_verbose_profile && status="🧹 Worktree removed"
-            ;;
         *)
             if is_verbose_profile && [[ -n "${event_name}" ]]; then
                 status="🔔 ${event_name}"

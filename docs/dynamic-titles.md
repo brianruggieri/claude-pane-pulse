@@ -151,8 +151,6 @@ Additional hooks fire for lifecycle and permission events. These are only surfac
 | SubagentStop | `✅ Complete` |
 | TeammateIdle | `⏸️ Teammate idle` |
 | ConfigChange | `⚙️ Configuring` |
-| WorktreeCreate | `🌳 Creating branch` |
-| WorktreeRemove | `🗑️ Removing branch` |
 
 ## Title Format
 
@@ -216,7 +214,7 @@ Shows only high-signal events:
 Shows all events, including:
 - Lifecycle events (SessionStart, SessionEnd, PreCompact)
 - Subagent events (SubagentStart, SubagentStop, TeammateIdle)
-- Configuration events (ConfigChange, WorktreeCreate, WorktreeRemove)
+- Configuration events (ConfigChange)
 - Generic notifications with action keywords (Input needed)
 - Task completion events (TaskCompleted)
 
