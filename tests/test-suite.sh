@@ -445,6 +445,61 @@ result=$(echo '{"tool_name":"Read","tool_input":{},"tool_response":"3 tests pass
       bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "post-tool: non-Bash leaves status unchanged" "✏️ Editing" "${result}"
 
+# post-tool: stale approval/input states cleared after Bash tool completes
+# Regression: PermissionRequest/Notification hooks fire async and can overwrite
+# the active status set by PreToolUse.  PostToolUse must always write to the
+# status file so these stale states don't persist after the tool finishes.
+
+# Generic Bash (no special output) clears "Awaiting approval" → idle
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"tool_response":"file.txt"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "post-tool: generic Bash clears stale ⏸️ Awaiting approval" "${result}"
+
+# Generic Bash (no special output) clears "Input needed" → idle
+printf '🙋 Input needed' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"cat README.md"},"tool_response":"contents"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "post-tool: generic Bash clears stale 🙋 Input needed" "${result}"
+
+# Test-pass Bash still writes ✅ even when status was "Awaiting approval"
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"5 tests passed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: tests passed overrides stale ⏸️ Awaiting approval" "✅ Tests passed" "${result}"
+
+# Test-fail Bash still writes ❌ even when status was "Awaiting approval"
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"2 tests failed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: tests failed overrides stale ⏸️ Awaiting approval" "❌ Tests failed" "${result}"
+
+# Commit Bash still writes 💾 even when status was "Awaiting approval"
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"fix\""},"tool_response":"[main abc123] fix"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: commit overrides stale ⏸️ Awaiting approval" "💾 Committed" "${result}"
+
+# Generic Bash (no special output) clears any stale active status → idle
+# (previously would leave e.g. "🖥️ Running" from a prior pre-tool call)
+printf '🖥️ Running' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo done"},"tool_response":"done"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "post-tool: generic Bash clears stale 🖥️ Running on completion" "${result}"
+
+# Non-Bash tools still leave status unchanged (no post-tool writes for Edit/Read/etc.)
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Edit","tool_input":{},"tool_response":""}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: non-Bash (Edit) does not clear status" "⏸️ Awaiting approval" "${result}"
+
 printf '🧪 Testing' > "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"error":"exit 1"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \

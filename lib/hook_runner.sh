@@ -464,7 +464,15 @@ case "${mode}" in
 
         _dbg_event "status_set" "tool=${tool}" "command=$(printf '%s' "${command_str}" | head -c 80)" "status=${status}" "output_preview=$(printf '%s' "${tool_response}" | head -c 120)"
         _dbg "post-tool tool=${tool} status=${status}"
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        if [[ -n "${status}" ]]; then
+            atomic_write "${CCP_STATUS_FILE}" "${status}"
+        elif [[ -n "${CCP_STATUS_FILE:-}" ]]; then
+            # Clear stale status (e.g. "⏸️ Awaiting approval", "🙋 Input needed")
+            # left by a PermissionRequest/Notification hook that fired async after
+            # PreToolUse.  Tool has now completed — signal idle so the monitor
+            # transitions cleanly instead of staying stuck on the approval state.
+            atomic_write "${CCP_STATUS_FILE}" ""
+        fi
 
         # Detect branch-changing commands and update CCP_BRANCH_FILE so the
         # title monitor can refresh the pane title with the new branch name.
