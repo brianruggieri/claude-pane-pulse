@@ -161,11 +161,11 @@ else
     # No argument — find the latest log
     echo -e "  ${DIM}Scanning for debug logs...${NC}"
     while true; do
-        log=$(ls -t "${LOG_DIR}"/debug.*.jsonl 2>/dev/null | head -1) || true
+        log=$(find "${LOG_DIR}" -maxdepth 1 -name 'debug.*.jsonl' -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -1) || true
         if [[ -n "${log}" && -f "${log}" ]]; then
             break
         fi
-        printf "\r  ${DIM}Waiting for a debug log... (start ccp with --debug-ccp)${NC} "
+        printf '\r  %sWaiting for a debug log... (start ccp with --debug-ccp)%s ' "${DIM}" "${NC}"
         sleep 1
     done
     echo -e "\r  ${GREEN}Log:${NC} $(basename "${log}")                              "
@@ -277,7 +277,7 @@ tail -f "${log}" | while IFS= read -r line; do
             cmd_val=$(printf '%s' "${line}" | jq -r '.command // ""' 2>/dev/null) || cmd_val=""
             expected=$(expected_status_for "${tool}" "${cmd_val}")
             # Extract just the label from the emoji+label status string
-            status_label=$(echo "${status}" | sed 's/^[^ ]* //')
+            status_label="${status#* }"
             if [[ -n "${expected}" && "${status_label}" != "${expected}" ]]; then
                 alert "WARN" "Status mismatch: tool=${tool} cmd='$(echo "${cmd_val}" | head -c 40)' got='${status}' expected='${expected}'"
             fi
