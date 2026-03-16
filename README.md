@@ -193,9 +193,11 @@ Startup     my-app (main) | 👋 Welcome back, Brian
 | 📖 | Reading | Read, Glob, Grep | 55 |
 | 🌐 | Browsing | WebFetch, WebSearch | 55 |
 | 🖥️ | Running | Any other Bash command | 55 |
-| 🔧 | *ToolName* | Unknown tool (shows the actual tool name) | 50 |
+| 📤 | Sending | SendMessage tool | 55 |
+| 🔧 | Working | Skill tool or unclassified tool | 55 |
+| 📡 | Monitoring | Background agents running while Claude is idle | 20 |
 
-Higher priority always wins. The one exception: completion events (✅, 💾, 🏁) override any active status immediately, regardless of priority.
+Higher priority always wins. The one exception: completion events (✅, 💾, 🏁, ❌, 🐛) override any active status immediately, regardless of priority.
 
 ### Verbose-only
 
