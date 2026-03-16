@@ -458,7 +458,7 @@ main() {
     log_success "Starting: ${title}"
     log_info "Directory: ${directory}"
     if [[ -n "${restored_title}" ]]; then
-        log_info "Resuming:       ${restored_title}"
+        log_info "Resuming: ${restored_title}"
     fi
     if [[ "${enable_dynamic}" = true ]]; then
         log_info "Dynamic titles: ${GREEN}enabled${NC}"
