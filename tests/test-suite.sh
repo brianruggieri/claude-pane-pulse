@@ -1077,19 +1077,19 @@ assert_contains "bin/ccp: --print after -- logs skip message" \
     "Skipping dynamic titles: --print mode detected" \
     "$(cat "${cli_out}" 2>/dev/null || true)"
 
-# Normal args should NOT trigger the skip (dynamic titles still enabled info)
+# --no-dynamic disables titles explicitly; should NOT emit auto-detect skip message
 cli_exit=0
 cli_out="${CLI_TMP_DIR}/normal.out"
 CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
 STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
 "${BIN_CCP}" --no-dynamic "Normal task" \
     >"${cli_out}" 2>&1 || cli_exit=$?
-assert_equals "bin/ccp: normal args exit 0" "0" "${cli_exit}"
-# Should NOT contain the --print skip message
+assert_equals "bin/ccp: --no-dynamic exits 0" "0" "${cli_exit}"
+# Should NOT contain the --print auto-detect skip message
 if [[ "$(cat "${cli_out}" 2>/dev/null || true)" == *"Skipping dynamic titles: --print mode detected"* ]]; then
-    fail "bin/ccp: normal args should not trigger --print detection"
+    fail "bin/ccp: --no-dynamic should not trigger --print auto-detection message"
 else
-    pass "bin/ccp: normal args do not trigger --print detection"
+    pass "bin/ccp: --no-dynamic does not trigger --print auto-detection message"
 fi
 
 # --output-format json should auto-disable dynamic titles
