@@ -80,6 +80,17 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local name="$1"
+    local needle="$2"
+    local haystack="$3"
+    if [[ "${haystack}" != *"${needle}"* ]]; then
+        pass "${name}"
+    else
+        fail "${name}" "expected NOT to contain: '${needle}', got: '${haystack}'"
+    fi
+}
+
 assert_empty() {
     local name="$1"
     local value="$2"
@@ -1241,6 +1252,58 @@ result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_empty "dedup: stop clears non-empty 🖥️ Running" "${result}"
 
 rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
+# ── Tests: bin/ccp startup messaging ──────────────────────────────────────────
+
+echo ""
+echo "bin/ccp startup messaging"
+
+BIN_CCP="${PROJECT_DIR}/bin/ccp"
+CLI_TMP_DIR=$(mktemp -d)
+CLI_STATE_DIR="${CLI_TMP_DIR}/state"
+mkdir -p "${CLI_STATE_DIR}"
+CLI_SESSION_FILE="${CLI_STATE_DIR}/sessions.json"
+echo '[]' > "${CLI_SESSION_FILE}"
+
+# --append-system-prompt should be filtered from Claude args display
+cli_out="${CLI_TMP_DIR}/startup-inline.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --ai-context --ai-context-strategy inline --no-dynamic "messaging test" \
+    >"${cli_out}" 2>&1 || true
+assert_not_contains "bin/ccp: inline strategy hides --append-system-prompt from args display" \
+    "--append-system-prompt" "$(cat "${cli_out}" 2>/dev/null || true)"
+
+# Extra user-supplied args should still appear when --append-system-prompt is also injected
+cli_out2="${CLI_TMP_DIR}/startup-inline-extra.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --ai-context --ai-context-strategy inline --no-dynamic "messaging test" -- --some-flag \
+    >"${cli_out2}" 2>&1 || true
+assert_contains "bin/ccp: extra args still shown when inline strategy active" \
+    "--some-flag" "$(cat "${cli_out2}" 2>/dev/null || true)"
+assert_not_contains "bin/ccp: --append-system-prompt still hidden when extra args present" \
+    "--append-system-prompt" "$(cat "${cli_out2}" 2>/dev/null || true)"
+
+# --goto: matching session emits "Resuming:" line
+CLI_GOTO_STATE_DIR="${CLI_TMP_DIR}/goto-state"
+mkdir -p "${CLI_GOTO_STATE_DIR}"
+CLI_GOTO_SESSION_FILE="${CLI_GOTO_STATE_DIR}/sessions.json"
+# Inject a live session (use current PID so it appears alive to find_session)
+printf '[{"pid":%d,"title":"Fix Auth Bug","directory":"%s"}]' "$$" "${CLI_TMP_DIR}" \
+    > "${CLI_GOTO_SESSION_FILE}"
+
+cli_out3="${CLI_TMP_DIR}/startup-goto.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_GOTO_STATE_DIR}" SESSION_FILE="${CLI_GOTO_SESSION_FILE}" \
+"${BIN_CCP}" --goto "Fix Auth" --no-dynamic \
+    >"${cli_out3}" 2>&1 || true
+assert_contains "bin/ccp: --goto shows Resuming line with matched title" \
+    "Resuming:" "$(cat "${cli_out3}" 2>/dev/null || true)"
+assert_contains "bin/ccp: --goto Resuming line includes session title" \
+    "Fix Auth Bug" "$(cat "${cli_out3}" 2>/dev/null || true)"
+
+rm -rf "${CLI_TMP_DIR}"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

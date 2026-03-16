@@ -169,6 +169,7 @@ main() {
     local ai_context_strategy="${CCP_AI_CONTEXT_STRATEGY:-haiku}"
     local enable_debug_ccp="${CCP_DEBUG:-false}"
     local claude_args=()
+    local restored_title=""
 
     # Initialize state directory
     init_state_dir
@@ -279,6 +280,7 @@ main() {
                     exit 1
                 fi
                 title=$(find_session_title "${search}")
+                restored_title="${title}"
                 shift
                 ;;
 
@@ -455,6 +457,9 @@ main() {
     # Show startup status
     log_success "Starting: ${title}"
     log_info "Directory: ${directory}"
+    if [[ -n "${restored_title}" ]]; then
+        log_info "Resuming: ${restored_title}"
+    fi
     if [[ "${enable_dynamic}" = true ]]; then
         log_info "Dynamic titles: ${GREEN}enabled${NC}"
         log_info "Status profile: ${CCP_STATUS_PROFILE}"
@@ -470,7 +475,22 @@ main() {
         fi
     fi
     if [[ ${#claude_args[@]} -gt 0 ]]; then
-        log_info "Claude args: ${claude_args[*]}"
+        local display_args=()
+        local skip_next=false
+        for arg in "${claude_args[@]}"; do
+            if [[ "${skip_next}" == true ]]; then
+                skip_next=false
+                continue
+            fi
+            if [[ "${arg}" == "--append-system-prompt" ]]; then
+                skip_next=true
+                continue
+            fi
+            display_args+=("${arg}")
+        done
+        if [[ ${#display_args[@]} -gt 0 ]]; then
+            log_info "Claude args:    ${display_args[*]}"
+        fi
     fi
     echo ""
 
