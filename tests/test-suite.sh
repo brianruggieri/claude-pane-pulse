@@ -257,6 +257,8 @@ echo ""
 echo "status_to_priority()"
 
 assert_equals "Error → 100"         "100" "$(status_to_priority "🐛 Error")"
+assert_equals "Push failed → 100"   "100" "$(status_to_priority "🐛 Push failed")"
+assert_equals "Pull failed → 100"   "100" "$(status_to_priority "🐛 Pull failed")"
 assert_equals "Tests failed → 90"   "90"  "$(status_to_priority "❌ Tests failed")"
 assert_equals "Awaiting approval → 88" "88" "$(status_to_priority "⏸️ Awaiting approval")"
 assert_equals "Input needed → 85"   "85"  "$(status_to_priority "🙋 Input needed")"
@@ -580,6 +582,70 @@ result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"error":"bo
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" post-tool-failure && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "post-tool-failure: generic failure → 🐛 Error" "🐛 Error" "${result}"
+
+# post-tool: push failure detection
+printf '⬆️ Pushing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"},"tool_response":"error: failed to push some refs to '\''origin'\''"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git push error: failed to push → 🐛 Push failed" "🐛 Push failed" "${result}"
+
+printf '⬆️ Pushing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"},"tool_response":"To github.com:user/repo.git\n ! [rejected]        main -> main (fetch first)"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git push ! [rejected] → 🐛 Push failed" "🐛 Push failed" "${result}"
+
+printf '⬆️ Pushing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"},"tool_response":"! [remote rejected] main -> main (protected branch)"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git push ! [remote rejected] → 🐛 Push failed" "🐛 Push failed" "${result}"
+
+printf '⬆️ Pushing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"},"tool_response":"ERROR: Repository not found."}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git push ERROR: → 🐛 Push failed" "🐛 Push failed" "${result}"
+
+# Successful push clears status
+printf '⬆️ Pushing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"},"tool_response":"To github.com:user/repo.git\n   abc1234..def5678  main -> main"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "post-tool: git push success clears status" "${result}"
+
+# post-tool: pull failure detection
+printf '⬇️ Pulling' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git pull origin main"},"tool_response":"CONFLICT (content): Merge conflict in src/foo.ts\nAutomatic merge failed; fix conflicts and then commit the result."}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git pull CONFLICT → 🐛 Pull failed" "🐛 Pull failed" "${result}"
+
+printf '⬇️ Pulling' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git pull"},"tool_response":"error: Your local changes to the following files would be overwritten by merge"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git pull error: → 🐛 Pull failed" "🐛 Pull failed" "${result}"
+
+printf '⬇️ Pulling' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git pull origin main"},"tool_response":"fatal: refusing to merge unrelated histories"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git pull fatal: → 🐛 Pull failed" "🐛 Pull failed" "${result}"
+
+printf '⬇️ Pulling' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git pull"},"tool_response":"Automatic merge failed; fix conflicts and then commit the result."}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "post-tool: git pull Automatic merge failed → 🐛 Pull failed" "🐛 Pull failed" "${result}"
+
+# Successful pull clears status
+printf '⬇️ Pulling' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git pull origin main"},"tool_response":"Already up to date."}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "post-tool: git pull success clears status" "${result}"
 
 # post-tool: branch change detection writes CCP_BRANCH_FILE
 # hook_runner.sh detects git checkout/switch/branch commands and calls

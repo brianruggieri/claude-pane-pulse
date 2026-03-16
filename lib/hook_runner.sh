@@ -112,7 +112,7 @@ atomic_write() {
 _status_priority() {
     local s="$1"
     case "${s}" in
-        *Error*)           echo 100 ;;
+        *Error*|*"Push failed"*|*"Pull failed"*) echo 100 ;;
         *"Tests failed"*)  echo 90 ;;
         *"Awaiting approval"*) echo 88 ;;
         *"Input needed"*)  echo 85 ;;
@@ -131,7 +131,7 @@ _status_priority() {
 
 _is_completion_event() {
     case "$1" in
-        *"Tests passed"*|*Committed*|*Completed*|*"Tests failed"*|*Error*) return 0 ;;
+        *"Tests passed"*|*Committed*|*Completed*|*"Tests failed"*|*Error*|*"Push failed"*|*"Pull failed"*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -557,6 +557,12 @@ case "${mode}" in
             status="❌ Tests failed"
         elif [[ "${command_str}" =~ git[[:space:]]+commit && "${tool_response}" =~ ^\[ ]]; then
             status="💾 Committed"
+        elif [[ "${command_str}" =~ git[[:space:]]+push ]] && \
+             [[ "${tool_response}" =~ (error:[[:space:]]+failed[[:space:]]+to[[:space:]]+push|!\ \[rejected\]|!\ \[remote\ rejected\]|ERROR:) ]]; then
+            status="🐛 Push failed"
+        elif [[ "${command_str}" =~ git[[:space:]]+pull ]] && \
+             [[ "${tool_response}" =~ (CONFLICT|error:|fatal:|Automatic[[:space:]]+merge[[:space:]]+failed) ]]; then
+            status="🐛 Pull failed"
         fi
 
         _dbg_event "status_set" "tool=${tool}" "command=$(printf '%s' "${command_str}" | head -c 80)" "status=${status}" "output_preview=$(printf '%s' "${tool_response}" | head -c 120)"
