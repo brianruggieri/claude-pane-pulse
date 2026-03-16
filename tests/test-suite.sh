@@ -263,6 +263,8 @@ assert_equals "Completed → 60"      "60"  "$(status_to_priority "🏁 Complete
 assert_equals "Running → 55"        "55"  "$(status_to_priority "🖥️ Running")"
 assert_equals "Reading → 55"        "55"  "$(status_to_priority "📖 Reading")"
 assert_equals "Browsing → 55"       "55"  "$(status_to_priority "🌐 Browsing")"
+assert_equals "Working → 55"        "55"  "$(status_to_priority "🔧 Working")"
+assert_equals "Sending → 55"        "55"  "$(status_to_priority "📤 Sending")"
 assert_equals "Session started → 52" "52" "$(status_to_priority "🚀 Session started")"
 assert_equals "Monitoring → 20"     "20"  "$(status_to_priority "📡 Monitoring")"
 assert_equals "unknown → 50"        "50"  "$(status_to_priority "🔧 SomeTool")"

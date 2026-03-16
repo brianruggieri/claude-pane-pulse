@@ -29,6 +29,9 @@ source "${_MONITOR_SCRIPT_DIR}/title.sh"
 # 💾 Committed      = 60
 # 🏁 Completed      = 60
 # 🖥️ Running        = 55  (catch-all for unrecognised ● Bash() lines)
+# 📤 Sending         = 55
+# 🔧 Working         = 55  (fallback for unclassified tools)
+# 📡 Monitoring      = 20
 # 💤 Idle           = 10
 
 # ── status_to_priority ────────────────────────────────────────────────────────
@@ -213,7 +216,7 @@ title_updater() {
                         case "${hook_status}" in
                             *Editing*|*Reading*|*Browsing*|*Delegating*|*Testing*|\
                             *Building*|*Installing*|*Pushing*|*Pulling*|*Merging*|\
-                            *Docker*|*Running*|*Thinking*|*Error*|*Tests\ passed*|\
+                            *Docker*|*Running*|*Working*|*Sending*|*Thinking*|*Error*|*Tests\ passed*|\
                             *Tests\ failed*|*Committed*|*Completed*|*Idle*|\
                             *Awaiting\ approval*|*Input\ needed*|*Notification*|\
                             *Session\ started*|*Session\ ended*|*Compacting*|\
