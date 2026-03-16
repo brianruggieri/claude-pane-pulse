@@ -108,6 +108,83 @@ atomic_write() {
     printf '%s' "${content}" > "${tmp}" && mv "${tmp}" "${file}" || true
 }
 
+# SYNC: must match status_to_priority() in monitor.sh
+_status_priority() {
+    local s="$1"
+    case "${s}" in
+        *Error*|*"Push failed"*|*"Pull failed"*) echo 100 ;;
+        *"Tests failed"*)  echo 90 ;;
+        *"Awaiting approval"*) echo 88 ;;
+        *"Input needed"*)  echo 85 ;;
+        *Building*|*Testing*|*Installing*) echo 80 ;;
+        *Pushing*|*Pulling*|*Merging*) echo 75 ;;
+        *Docker*|*Thinking*|*Delegating*) echo 70 ;;
+        *Editing*)         echo 65 ;;
+        *"Tests passed"*|*Committed*|*Completed*|*"Subagent finished"*) echo 60 ;;
+        *Reading*|*Browsing*|*Running*|*Sending*|*Working*) echo 55 ;;
+        *"Session started"*|*Compacting*|*"Subagent started"*|*"Teammate idle"*|*"Config changed"*|*Notification*|*"Session ended"*|*Worktree*) echo 52 ;;
+        *Monitoring*)      echo 20 ;;
+        "")                echo 0 ;;
+        *)                 echo 50 ;;
+    esac
+}
+
+_is_completion_event() {
+    case "$1" in
+        *"Tests passed"*|*Committed*|*Completed*|*"Tests failed"*|*Error*|*"Push failed"*|*"Pull failed"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_priority_write() {
+    local new_status="$1"
+    local status_file="${CCP_STATUS_FILE:-}"
+    local current_status=""
+    [[ -z "${status_file}" ]] && return 0
+
+    # Empty writes (clears) — skip if already empty
+    if [[ -z "${new_status}" ]]; then
+        if [[ -f "${status_file}" ]]; then
+            current_status=$(cat "${status_file}" 2>/dev/null) || current_status=""
+        fi
+        if [[ -z "${current_status}" ]]; then
+            _dbg_event "status_dedup" "status="
+            return 0
+        fi
+        atomic_write "${status_file}" ""
+        return 0
+    fi
+
+    # Completion events always win
+    if _is_completion_event "${new_status}"; then
+        atomic_write "${status_file}" "${new_status}"
+        return 0
+    fi
+
+    # Read current status and compare priorities
+    if [[ -f "${status_file}" ]]; then
+        current_status=$(cat "${status_file}" 2>/dev/null) || current_status=""
+    fi
+
+    local current_pri new_pri
+    current_pri=$(_status_priority "${current_status}")
+    new_pri=$(_status_priority "${new_status}")
+
+    if [[ "${new_pri}" -ge "${current_pri}" ]]; then
+        # Dedup: skip write if file already contains this exact status
+        if [[ "${new_status}" == "${current_status}" ]]; then
+            _dbg_event "status_dedup" "status=${new_status}"
+            return 0
+        fi
+        atomic_write "${status_file}" "${new_status}"
+        return 0
+    else
+        _dbg "priority_write: '${new_status}' (${new_pri}) < '${current_status}' (${current_pri}) — BLOCKED"
+        _dbg_event "priority_blocked" "new_status=${new_status}" "new_pri=${new_pri}" "current_status=${current_status}" "current_pri=${current_pri}"
+        return 1
+    fi
+}
+
 # status_profile: quiet (default) or verbose.
 status_profile="${CCP_STATUS_PROFILE:-quiet}"
 case "${status_profile}" in
@@ -272,6 +349,10 @@ case "${mode}" in
                     status="⬇️ Pulling"
                 elif [[ "${command_str}" =~ git[[:space:]]+merge ]]; then
                     status="🔀 Merging"
+                elif [[ "${command_str}" =~ git[[:space:]]+rebase ]]; then
+                    status="🔀 Rebasing"
+                elif [[ "${command_str}" =~ git[[:space:]]+cherry-pick ]]; then
+                    status="🍒 Cherry-picking"
                 elif [[ "${command_str}" =~ docker ]]; then
                     status="🐳 Docker"
                 else
@@ -288,7 +369,7 @@ case "${mode}" in
 
         _dbg_event "status_set" "tool=${tool}" "command=$(printf '%s' "${command_str}" | head -c 80)" "status=${status}" "json_bytes=${#json_input}"
         _dbg "tool=${tool} status=${status}"
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        [[ -n "${status}" ]] && _priority_write "${status}"
         ;;
 
     user-prompt)
@@ -319,7 +400,15 @@ case "${mode}" in
         # We write rather than clear so there is never an empty-status window that
         # races with the async PreToolUse hook that fires right after this one.
         if [[ -n "${CCP_STATUS_FILE:-}" ]]; then
-            atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
+            _cur=""
+            if [[ -f "${CCP_STATUS_FILE}" ]]; then
+                _cur=$(cat "${CCP_STATUS_FILE}" 2>/dev/null) || _cur=""
+            fi
+            if [[ "${_cur}" == "💭 Thinking" ]]; then
+                _dbg_event "status_dedup" "status=💭 Thinking"
+            else
+                atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
+            fi
             _dbg_event "status_set" "status=💭 Thinking" "trigger=user-prompt"
             _dbg "wrote Thinking to status file on user-prompt"
         fi
@@ -396,7 +485,15 @@ case "${mode}" in
         _dbg_event "status_cleared" "trigger=stop"
         _dbg "clearing status file"
         # Empty status signals idle to the monitor on the next heartbeat
-        atomic_write "${CCP_STATUS_FILE}" ""
+        _cur=""
+        if [[ -f "${CCP_STATUS_FILE}" ]]; then
+            _cur=$(cat "${CCP_STATUS_FILE}" 2>/dev/null) || _cur=""
+        fi
+        if [[ -z "${_cur}" ]]; then
+            _dbg_event "status_dedup" "status="
+        else
+            atomic_write "${CCP_STATUS_FILE}" ""
+        fi
         ;;
 
     post-tool)
@@ -460,18 +557,32 @@ case "${mode}" in
             status="❌ Tests failed"
         elif [[ "${command_str}" =~ git[[:space:]]+commit && "${tool_response}" =~ ^\[ ]]; then
             status="💾 Committed"
+        elif [[ "${command_str}" =~ git[[:space:]]+push ]] && \
+             [[ "${tool_response}" =~ (error:[[:space:]]+failed[[:space:]]+to[[:space:]]+push|!\ \[rejected\]|!\ \[remote\ rejected\]|ERROR:) ]]; then
+            status="🐛 Push failed"
+        elif [[ "${command_str}" =~ git[[:space:]]+pull ]] && \
+             [[ "${tool_response}" =~ (CONFLICT|error:|fatal:|Automatic[[:space:]]+merge[[:space:]]+failed) ]]; then
+            status="🐛 Pull failed"
         fi
 
         _dbg_event "status_set" "tool=${tool}" "command=$(printf '%s' "${command_str}" | head -c 80)" "status=${status}" "output_preview=$(printf '%s' "${tool_response}" | head -c 120)"
         _dbg "post-tool tool=${tool} status=${status}"
         if [[ -n "${status}" ]]; then
-            atomic_write "${CCP_STATUS_FILE}" "${status}"
+            _priority_write "${status}"
         elif [[ -n "${CCP_STATUS_FILE:-}" ]]; then
             # Clear stale status (e.g. "⏸️ Awaiting approval", "🙋 Input needed")
             # left by a PermissionRequest/Notification hook that fired async after
             # PreToolUse.  Tool has now completed — signal idle so the monitor
             # transitions cleanly instead of staying stuck on the approval state.
-            atomic_write "${CCP_STATUS_FILE}" ""
+            _cur=""
+            if [[ -f "${CCP_STATUS_FILE}" ]]; then
+                _cur=$(cat "${CCP_STATUS_FILE}" 2>/dev/null) || _cur=""
+            fi
+            if [[ -z "${_cur}" ]]; then
+                _dbg_event "status_dedup" "status="
+            else
+                atomic_write "${CCP_STATUS_FILE}" ""
+            fi
         fi
 
         # Detect branch-changing commands and update CCP_BRANCH_FILE so the
@@ -506,7 +617,7 @@ case "${mode}" in
 
         _dbg_event "status_set" "tool=${tool}" "command=$(printf '%s' "${command_str}" | head -c 80)" "status=${status}" "error=true"
         _dbg "post-tool-failure tool=${tool} status=${status}"
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        [[ -n "${status}" ]] && _priority_write "${status}"
         ;;
 
     event)
@@ -553,7 +664,7 @@ case "${mode}" in
 
         _dbg_event "lifecycle_event" "event_name=${event_name}" "profile=${status_profile}" "status=${status}"
         _dbg "event=${event_name} profile=${status_profile} status=${status}"
-        [[ -n "${status}" ]] && atomic_write "${CCP_STATUS_FILE}" "${status}"
+        [[ -n "${status}" ]] && _priority_write "${status}"
         ;;
 
 esac
