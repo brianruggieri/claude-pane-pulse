@@ -184,6 +184,8 @@ Startup     my-app (main) | 👋 Welcome back, Brian
 | ⬆️ | Pushing | git push | 75 |
 | ⬇️ | Pulling | git pull | 75 |
 | 🔀 | Merging | git merge | 75 |
+| 🔀 | Rebasing | git rebase | 75 |
+| 🍒 | Cherry-picking | git cherry-pick | 75 |
 | 🤖 | Delegating | Task or Agent tool use | 70 |
 | 🐳 | Docker | Any docker command | 70 |
 | ✏️ | Editing | Edit, Write, MultiEdit, NotebookEdit | 65 |
