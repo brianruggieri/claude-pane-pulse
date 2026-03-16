@@ -257,6 +257,8 @@ echo ""
 echo "status_to_priority()"
 
 assert_equals "Error → 100"         "100" "$(status_to_priority "🐛 Error")"
+assert_equals "Push failed → 100"   "100" "$(status_to_priority "🐛 Push failed")"
+assert_equals "Pull failed → 100"   "100" "$(status_to_priority "🐛 Pull failed")"
 assert_equals "Tests failed → 90"   "90"  "$(status_to_priority "❌ Tests failed")"
 assert_equals "Awaiting approval → 88" "88" "$(status_to_priority "⏸️ Awaiting approval")"
 assert_equals "Input needed → 85"   "85"  "$(status_to_priority "🙋 Input needed")"

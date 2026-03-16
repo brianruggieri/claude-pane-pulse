@@ -35,7 +35,7 @@ source "${_MONITOR_SCRIPT_DIR}/title.sh"
 # Map a status string (as written by hook_runner.sh) to a priority integer.
 status_to_priority() {
     local status="$1"
-    if [[ "${status}" =~ "🐛 Error" ]]; then
+    if [[ "${status}" =~ (Error|Push\ failed|Pull\ failed) ]]; then
         echo 100
     elif [[ "${status}" =~ "❌ Tests failed" ]]; then
         echo 90
@@ -213,7 +213,7 @@ title_updater() {
                         case "${hook_status}" in
                             *Editing*|*Reading*|*Browsing*|*Delegating*|*Testing*|\
                             *Building*|*Installing*|*Pushing*|*Pulling*|*Merging*|\
-                            *Docker*|*Running*|*Thinking*|*Error*|*Tests\ passed*|\
+                            *Docker*|*Running*|*Thinking*|*Error*|*Push\ failed*|*Pull\ failed*|*Tests\ passed*|\
                             *Tests\ failed*|*Committed*|*Completed*|*Idle*|\
                             *Awaiting\ approval*|*Input\ needed*|*Notification*|\
                             *Session\ started*|*Session\ ended*|*Compacting*|\
