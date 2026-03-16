@@ -98,6 +98,8 @@ The hook fires when Claude Code is about to invoke a tool. We examine the tool n
 | Bash(git push) | `⬆️ Pushing` |
 | Bash(git pull) | `⬇️ Pulling` |
 | Bash(git merge) | `🔀 Merging` |
+| Bash(git rebase) | `🔀 Rebasing` |
+| Bash(git cherry-pick) | `🍒 Cherry-picking` |
 | Bash(docker) | `🐳 Docker` |
 | Any other Bash | `🖥️ Running` |
 | Unknown tool | `🔧 ToolName` |

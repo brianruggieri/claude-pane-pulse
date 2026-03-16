@@ -22,6 +22,8 @@ source "${_MONITOR_SCRIPT_DIR}/title.sh"
 # ⬆️ Pushing        = 75
 # ⬇️ Pulling        = 75
 # 🔀 Merging        = 75
+# 🔀 Rebasing       = 75
+# 🍒 Cherry-picking = 75
 # 🐳 Docker         = 70
 # 💭 Thinking       = 70  (structural: any ● line with trailing …)
 # ✏️ Editing        = 65
@@ -29,10 +31,14 @@ source "${_MONITOR_SCRIPT_DIR}/title.sh"
 # 💾 Committed      = 60
 # 🏁 Completed      = 60
 # 🖥️ Running        = 55  (catch-all for unrecognised ● Bash() lines)
+# 📤 Sending         = 55
+# 🔧 Working         = 55  (fallback for unclassified tools)
+# 📡 Monitoring      = 20
 # 💤 Idle           = 10
 
 # ── status_to_priority ────────────────────────────────────────────────────────
 # Map a status string (as written by hook_runner.sh) to a priority integer.
+# SYNC: priority values must be kept in sync with _status_priority() in hook_runner.sh
 status_to_priority() {
     local status="$1"
     if [[ "${status}" =~ (Error|Push\ failed|Pull\ failed) ]]; then
@@ -45,7 +51,7 @@ status_to_priority() {
         echo 85
     elif [[ "${status}" =~ (Building|Testing|Installing) ]]; then
         echo 80
-    elif [[ "${status}" =~ (Pushing|Pulling|Merging) ]]; then
+    elif [[ "${status}" =~ (Pushing|Pulling|Merging|Rebasing|Cherry-picking) ]]; then
         echo 75
     elif [[ "${status}" =~ (Docker|Thinking|Delegating) ]]; then
         echo 70
@@ -212,8 +218,8 @@ title_updater() {
                         # Validate status is from known set
                         case "${hook_status}" in
                             *Editing*|*Reading*|*Browsing*|*Delegating*|*Testing*|\
-                            *Building*|*Installing*|*Pushing*|*Pulling*|*Merging*|\
-                            *Docker*|*Running*|*Thinking*|*Error*|*Push\ failed*|*Pull\ failed*|*Tests\ passed*|\
+                            *Building*|*Installing*|*Pushing*|*Pulling*|*Merging*|*Rebasing*|*Cherry-picking*|\
+                            *Docker*|*Running*|*Working*|*Sending*|*Thinking*|*Error*|*Push\ failed*|*Pull\ failed*|*Tests\ passed*|\
                             *Tests\ failed*|*Committed*|*Completed*|*Idle*|\
                             *Awaiting\ approval*|*Input\ needed*|*Notification*|\
                             *Session\ started*|*Session\ ended*|*Compacting*|\

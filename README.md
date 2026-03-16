@@ -184,6 +184,8 @@ Startup     my-app (main) | 👋 Welcome back, Brian
 | ⬆️ | Pushing | git push | 75 |
 | ⬇️ | Pulling | git pull | 75 |
 | 🔀 | Merging | git merge | 75 |
+| 🔀 | Rebasing | git rebase | 75 |
+| 🍒 | Cherry-picking | git cherry-pick | 75 |
 | 🤖 | Delegating | Task or Agent tool use | 70 |
 | 🐳 | Docker | Any docker command | 70 |
 | ✏️ | Editing | Edit, Write, MultiEdit, NotebookEdit | 65 |
@@ -193,9 +195,11 @@ Startup     my-app (main) | 👋 Welcome back, Brian
 | 📖 | Reading | Read, Glob, Grep | 55 |
 | 🌐 | Browsing | WebFetch, WebSearch | 55 |
 | 🖥️ | Running | Any other Bash command | 55 |
-| 🔧 | *ToolName* | Unknown tool (shows the actual tool name) | 50 |
+| 📤 | Sending | SendMessage tool | 55 |
+| 🔧 | Working | Skill tool or unclassified tool | 55 |
+| 📡 | Monitoring | Background agents running while Claude is idle | 20 |
 
-Higher priority always wins. The one exception: completion events (✅, 💾, 🏁) override any active status immediately, regardless of priority.
+Higher priority always wins. The one exception: completion events (✅, 💾, 🏁, ❌, 🐛) override any active status immediately, regardless of priority.
 
 ### Verbose-only
 
