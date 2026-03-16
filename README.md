@@ -197,7 +197,7 @@ Startup     my-app (main) | 👋 Welcome back, Brian
 | 🔧 | Working | Skill tool or unclassified tool | 55 |
 | 📡 | Monitoring | Background agents running while Claude is idle | 20 |
 
-Higher priority always wins. The one exception: completion events (✅, 💾, 🏁) override any active status immediately, regardless of priority.
+Higher priority always wins. The one exception: completion events (✅, 💾, 🏁, ❌, 🐛) override any active status immediately, regardless of priority.
 
 ### Verbose-only
 

@@ -1178,6 +1178,13 @@ result=$(echo '{"tool_name":"Read","tool_input":{"file_path":"foo.sh"}}' \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "priority: empty file allows 📖 Reading" "📖 Reading" "${result}"
 
+# 15. Working (p55) blocked by Editing (p65)
+printf '✏️ Editing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"SomeRandomTool","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: 🔧 Working (p55) blocked by ✏️ Editing (p65)" "✏️ Editing" "${result}"
+
 rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
 
 # ── Tests: dedup ──────────────────────────────────────────────────────────────

@@ -119,9 +119,10 @@ _status_priority() {
         *Building*|*Testing*|*Installing*) echo 80 ;;
         *Pushing*|*Pulling*|*Merging*) echo 75 ;;
         *Docker*|*Thinking*|*Delegating*) echo 70 ;;
-        *Editing*|*Working*) echo 65 ;;
+        *Editing*)         echo 65 ;;
         *"Tests passed"*|*Committed*|*Completed*|*"Subagent finished"*) echo 60 ;;
-        *Reading*|*Browsing*|*Running*|*Sending*) echo 55 ;;
+        *Reading*|*Browsing*|*Running*|*Sending*|*Working*) echo 55 ;;
+        *"Session started"*|*Compacting*|*"Subagent started"*|*"Teammate idle"*|*"Config changed"*|*Notification*|*"Session ended"*|*Worktree*) echo 52 ;;
         *Monitoring*)      echo 20 ;;
         "")                echo 0 ;;
         *)                 echo 50 ;;
