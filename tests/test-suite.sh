@@ -266,6 +266,8 @@ assert_equals "Installing → 80"     "80"  "$(status_to_priority "📦 Installi
 assert_equals "Pushing → 75"        "75"  "$(status_to_priority "⬆️ Pushing")"
 assert_equals "Pulling → 75"        "75"  "$(status_to_priority "⬇️ Pulling")"
 assert_equals "Merging → 75"        "75"  "$(status_to_priority "🔀 Merging")"
+assert_equals "Rebasing → 75"       "75"  "$(status_to_priority "🔀 Rebasing")"
+assert_equals "Cherry-picking → 75" "75"  "$(status_to_priority "🍒 Cherry-picking")"
 assert_equals "Docker → 70"         "70"  "$(status_to_priority "🐳 Docker")"
 assert_equals "Delegating → 70"     "70"  "$(status_to_priority "🤖 Delegating")"
 assert_equals "Editing → 65"        "65"  "$(status_to_priority "✏️ Editing")"
@@ -357,6 +359,30 @@ result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git pull --rebase"}}
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash git pull → ⬇️ Pulling"   "⬇️ Pulling"    "${result}"
+
+rm -f "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git rebase main"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "Bash git rebase → 🔀 Rebasing"         "🔀 Rebasing"         "${result}"
+
+rm -f "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git rebase --continue"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "Bash git rebase --continue → 🔀 Rebasing" "🔀 Rebasing"      "${result}"
+
+rm -f "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git cherry-pick abc123"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "Bash git cherry-pick → 🍒 Cherry-picking" "🍒 Cherry-picking" "${result}"
+
+rm -f "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git cherry-pick --abort"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "Bash git cherry-pick --abort → 🍒 Cherry-picking" "🍒 Cherry-picking" "${result}"
 
 rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"docker build -t myapp ."}}' \

@@ -22,6 +22,8 @@ source "${_MONITOR_SCRIPT_DIR}/title.sh"
 # ⬆️ Pushing        = 75
 # ⬇️ Pulling        = 75
 # 🔀 Merging        = 75
+# 🔀 Rebasing       = 75
+# 🍒 Cherry-picking = 75
 # 🐳 Docker         = 70
 # 💭 Thinking       = 70  (structural: any ● line with trailing …)
 # ✏️ Editing        = 65
@@ -49,7 +51,7 @@ status_to_priority() {
         echo 85
     elif [[ "${status}" =~ (Building|Testing|Installing) ]]; then
         echo 80
-    elif [[ "${status}" =~ (Pushing|Pulling|Merging) ]]; then
+    elif [[ "${status}" =~ (Pushing|Pulling|Merging|Rebasing|Cherry-picking) ]]; then
         echo 75
     elif [[ "${status}" =~ (Docker|Thinking|Delegating) ]]; then
         echo 70
@@ -216,7 +218,7 @@ title_updater() {
                         # Validate status is from known set
                         case "${hook_status}" in
                             *Editing*|*Reading*|*Browsing*|*Delegating*|*Testing*|\
-                            *Building*|*Installing*|*Pushing*|*Pulling*|*Merging*|\
+                            *Building*|*Installing*|*Pushing*|*Pulling*|*Merging*|*Rebasing*|*Cherry-picking*|\
                             *Docker*|*Running*|*Working*|*Sending*|*Thinking*|*Error*|*Tests\ passed*|\
                             *Tests\ failed*|*Committed*|*Completed*|*Idle*|\
                             *Awaiting\ approval*|*Input\ needed*|*Notification*|\

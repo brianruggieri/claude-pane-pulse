@@ -349,6 +349,10 @@ case "${mode}" in
                     status="⬇️ Pulling"
                 elif [[ "${command_str}" =~ git[[:space:]]+merge ]]; then
                     status="🔀 Merging"
+                elif [[ "${command_str}" =~ git[[:space:]]+rebase ]]; then
+                    status="🔀 Rebasing"
+                elif [[ "${command_str}" =~ git[[:space:]]+cherry-pick ]]; then
+                    status="🍒 Cherry-picking"
                 elif [[ "${command_str}" =~ docker ]]; then
                     status="🐳 Docker"
                 else
