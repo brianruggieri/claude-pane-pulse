@@ -1180,6 +1180,61 @@ assert_equals "priority: empty file allows 📖 Reading" "📖 Reading" "${resul
 
 rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
 
+# ── Tests: dedup ──────────────────────────────────────────────────────────────
+
+echo ""
+echo "status write deduplication"
+
+TMP_STATUS="${STATE_DIR}/test-dedup-status.txt"
+TMP_CONTEXT="${STATE_DIR}/test-dedup-context.txt"
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
+# 1. Pre-tool same status skipped (Reading → Read = still Reading, no write)
+printf '📖 Reading' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Read","tool_input":{"file_path":"foo.sh"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "dedup: pre-tool same status skipped (📖 Reading → Read)" "📖 Reading" "${result}"
+
+# 2. Pre-tool different status writes (Reading → Edit = Editing)
+printf '📖 Reading' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"foo.sh"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "dedup: pre-tool different status writes (📖 Reading → ✏️ Editing)" "✏️ Editing" "${result}"
+
+# 3. Post-tool empty dedup (already empty → generic Bash → still empty)
+printf '' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":"ok"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "dedup: post-tool empty dedup (already empty stays empty)" "${result}"
+
+# 4. Post-tool empty clears stale (⏸️ Awaiting approval → generic Bash → cleared)
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":"ok"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "dedup: post-tool empty clears stale ⏸️ Awaiting approval" "${result}"
+
+# 5. Stop dedup (already empty → stop → still empty)
+printf '' > "${TMP_STATUS}"
+echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "dedup: stop on already-empty file stays empty" "${result}"
+
+# 6. Stop clears non-empty (🖥️ Running → stop → cleared)
+printf '🖥️ Running' > "${TMP_STATUS}"
+echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "dedup: stop clears non-empty 🖥️ Running" "${result}"
+
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 rm -rf "${STATE_DIR}"

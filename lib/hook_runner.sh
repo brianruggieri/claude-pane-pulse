@@ -138,10 +138,18 @@ _is_completion_event() {
 _priority_write() {
     local new_status="$1"
     local status_file="${CCP_STATUS_FILE:-}"
+    local current_status=""
     [[ -z "${status_file}" ]] && return 0
 
-    # Empty writes (clears) always succeed
+    # Empty writes (clears) — skip if already empty
     if [[ -z "${new_status}" ]]; then
+        if [[ -f "${status_file}" ]]; then
+            current_status=$(cat "${status_file}" 2>/dev/null) || current_status=""
+        fi
+        if [[ -z "${current_status}" ]]; then
+            _dbg_event "status_dedup" "status="
+            return 0
+        fi
         atomic_write "${status_file}" ""
         return 0
     fi
@@ -153,7 +161,6 @@ _priority_write() {
     fi
 
     # Read current status and compare priorities
-    local current_status=""
     if [[ -f "${status_file}" ]]; then
         current_status=$(cat "${status_file}" 2>/dev/null) || current_status=""
     fi
@@ -163,6 +170,11 @@ _priority_write() {
     new_pri=$(_status_priority "${new_status}")
 
     if [[ "${new_pri}" -ge "${current_pri}" ]]; then
+        # Dedup: skip write if file already contains this exact status
+        if [[ "${new_status}" == "${current_status}" ]]; then
+            _dbg_event "status_dedup" "status=${new_status}"
+            return 0
+        fi
         atomic_write "${status_file}" "${new_status}"
         return 0
     else
@@ -383,7 +395,15 @@ case "${mode}" in
         # We write rather than clear so there is never an empty-status window that
         # races with the async PreToolUse hook that fires right after this one.
         if [[ -n "${CCP_STATUS_FILE:-}" ]]; then
-            atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
+            _cur=""
+            if [[ -f "${CCP_STATUS_FILE}" ]]; then
+                _cur=$(cat "${CCP_STATUS_FILE}" 2>/dev/null) || _cur=""
+            fi
+            if [[ "${_cur}" == "💭 Thinking" ]]; then
+                _dbg_event "status_dedup" "status=💭 Thinking"
+            else
+                atomic_write "${CCP_STATUS_FILE}" "💭 Thinking"
+            fi
             _dbg_event "status_set" "status=💭 Thinking" "trigger=user-prompt"
             _dbg "wrote Thinking to status file on user-prompt"
         fi
@@ -460,7 +480,15 @@ case "${mode}" in
         _dbg_event "status_cleared" "trigger=stop"
         _dbg "clearing status file"
         # Empty status signals idle to the monitor on the next heartbeat
-        atomic_write "${CCP_STATUS_FILE}" ""
+        _cur=""
+        if [[ -f "${CCP_STATUS_FILE}" ]]; then
+            _cur=$(cat "${CCP_STATUS_FILE}" 2>/dev/null) || _cur=""
+        fi
+        if [[ -z "${_cur}" ]]; then
+            _dbg_event "status_dedup" "status="
+        else
+            atomic_write "${CCP_STATUS_FILE}" ""
+        fi
         ;;
 
     post-tool)
@@ -535,7 +563,15 @@ case "${mode}" in
             # left by a PermissionRequest/Notification hook that fired async after
             # PreToolUse.  Tool has now completed — signal idle so the monitor
             # transitions cleanly instead of staying stuck on the approval state.
-            atomic_write "${CCP_STATUS_FILE}" ""
+            _cur=""
+            if [[ -f "${CCP_STATUS_FILE}" ]]; then
+                _cur=$(cat "${CCP_STATUS_FILE}" 2>/dev/null) || _cur=""
+            fi
+            if [[ -z "${_cur}" ]]; then
+                _dbg_event "status_dedup" "status="
+            else
+                atomic_write "${CCP_STATUS_FILE}" ""
+            fi
         fi
 
         # Detect branch-changing commands and update CCP_BRANCH_FILE so the
