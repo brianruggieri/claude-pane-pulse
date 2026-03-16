@@ -1397,6 +1397,109 @@ assert_contains "bin/ccp: --goto Resuming line includes session title" \
 
 rm -rf "${CLI_TMP_DIR}"
 
+# ── Tests: --print mode auto-disables dynamic titles ─────────────────────────
+
+echo ""
+echo "bin/ccp --print mode detection"
+
+BIN_CCP="${PROJECT_DIR}/bin/ccp"
+CLI_TMP_DIR=$(mktemp -d)
+CLI_STATE_DIR="${CLI_TMP_DIR}/state"
+mkdir -p "${CLI_STATE_DIR}"
+CLI_SESSION_FILE="${CLI_STATE_DIR}/sessions.json"
+echo '[]' > "${CLI_SESSION_FILE}"
+
+# --print flag should auto-disable dynamic titles (succeeds without monitor)
+cli_exit=0
+cli_out="${CLI_TMP_DIR}/print-long.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --print "Summarize this" \
+    >"${cli_out}" 2>&1 || cli_exit=$?
+assert_equals "bin/ccp: --print flag exits 0" "0" "${cli_exit}"
+assert_contains "bin/ccp: --print logs skip message" \
+    "Skipping dynamic titles: --print mode detected" \
+    "$(cat "${cli_out}" 2>/dev/null || true)"
+
+# -p short flag should also auto-disable dynamic titles
+cli_exit=0
+cli_out="${CLI_TMP_DIR}/print-short.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" -p "Summarize this" \
+    >"${cli_out}" 2>&1 || cli_exit=$?
+assert_equals "bin/ccp: -p flag exits 0" "0" "${cli_exit}"
+assert_contains "bin/ccp: -p logs skip message" \
+    "Skipping dynamic titles: --print mode detected" \
+    "$(cat "${cli_out}" 2>/dev/null || true)"
+
+# --print after -- separator should also be detected
+cli_exit=0
+cli_out="${CLI_TMP_DIR}/print-separator.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" "My task" -- --print \
+    >"${cli_out}" 2>&1 || cli_exit=$?
+assert_equals "bin/ccp: --print after -- exits 0" "0" "${cli_exit}"
+assert_contains "bin/ccp: --print after -- logs skip message" \
+    "Skipping dynamic titles: --print mode detected" \
+    "$(cat "${cli_out}" 2>/dev/null || true)"
+
+# --no-dynamic disables titles explicitly; should NOT emit auto-detect skip message
+cli_exit=0
+cli_out="${CLI_TMP_DIR}/normal.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --no-dynamic "Normal task" \
+    >"${cli_out}" 2>&1 || cli_exit=$?
+assert_equals "bin/ccp: --no-dynamic exits 0" "0" "${cli_exit}"
+# Should NOT contain the --print auto-detect skip message
+if [[ "$(cat "${cli_out}" 2>/dev/null || true)" == *"Skipping dynamic titles: --print mode detected"* ]]; then
+    fail "bin/ccp: --no-dynamic should not trigger --print auto-detection message"
+else
+    pass "bin/ccp: --no-dynamic does not trigger --print auto-detection message"
+fi
+
+# --output-format json should auto-disable dynamic titles
+cli_exit=0
+cli_out="${CLI_TMP_DIR}/output-json.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --output-format json "Summarize this" \
+    >"${cli_out}" 2>&1 || cli_exit=$?
+assert_equals "bin/ccp: --output-format json exits 0" "0" "${cli_exit}"
+assert_contains "bin/ccp: --output-format json logs skip message" \
+    "Skipping dynamic titles: --output-format json detected" \
+    "$(cat "${cli_out}" 2>/dev/null || true)"
+
+# --output-format stream-json should auto-disable dynamic titles
+cli_exit=0
+cli_out="${CLI_TMP_DIR}/output-stream-json.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --output-format stream-json "Summarize this" \
+    >"${cli_out}" 2>&1 || cli_exit=$?
+assert_equals "bin/ccp: --output-format stream-json exits 0" "0" "${cli_exit}"
+assert_contains "bin/ccp: --output-format stream-json logs skip message" \
+    "Skipping dynamic titles: --output-format stream-json detected" \
+    "$(cat "${cli_out}" 2>/dev/null || true)"
+
+# --output-format text should NOT trigger the skip
+cli_exit=0
+cli_out="${CLI_TMP_DIR}/output-text.out"
+CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
+STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
+"${BIN_CCP}" --output-format text --no-dynamic "Normal task" \
+    >"${cli_out}" 2>&1 || cli_exit=$?
+assert_equals "bin/ccp: --output-format text exits 0" "0" "${cli_exit}"
+if [[ "$(cat "${cli_out}" 2>/dev/null || true)" == *"Skipping dynamic titles: --output-format"* ]]; then
+    fail "bin/ccp: --output-format text should not trigger auto-disable"
+else
+    pass "bin/ccp: --output-format text does not trigger auto-disable"
+fi
+
+rm -rf "${CLI_TMP_DIR}"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 rm -rf "${STATE_DIR}"

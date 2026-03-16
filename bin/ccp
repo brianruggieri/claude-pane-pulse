@@ -286,7 +286,7 @@ main() {
 
             # ── Flags forwarded to Claude ─────────────────────────────────────
             # Flags with no value
-            -c|--continue|\
+            -c|--continue|-p|--print|\
             --dangerously-skip-permissions|--allow-dangerously-skip-permissions|\
             --verbose|--ide|--no-ide|--fork-session|--chrome|--no-chrome|\
             --no-session-persistence|--include-partial-messages|\
@@ -354,6 +354,26 @@ main() {
                 shift
                 ;;
         esac
+    done
+
+    # Auto-disable dynamic titles for non-interactive Claude invocations.
+    # --print / -p is single-turn, stdout-only — no TUI, hooks are meaningless,
+    # and the monitor's OSC escapes would interleave with piped output.
+    # --output-format json/stream-json are similarly non-interactive.
+    local _prev_arg=""
+    for _arg in ${claude_args[@]+"${claude_args[@]}"}; do
+        if [[ "${_arg}" == "--print" || "${_arg}" == "-p" ]]; then
+            enable_dynamic=false
+            log_info "Skipping dynamic titles: --print mode detected"
+            break
+        fi
+        if [[ "${_prev_arg}" == "--output-format" \
+              && ("${_arg}" == "json" || "${_arg}" == "stream-json") ]]; then
+            enable_dynamic=false
+            log_info "Skipping dynamic titles: --output-format ${_arg} detected"
+            break
+        fi
+        _prev_arg="${_arg}"
     done
 
     # Resolve title: explicit arg wins; auto-detect is the default fallback.
