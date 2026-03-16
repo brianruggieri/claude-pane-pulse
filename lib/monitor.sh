@@ -36,6 +36,7 @@ source "${_MONITOR_SCRIPT_DIR}/title.sh"
 
 # ── status_to_priority ────────────────────────────────────────────────────────
 # Map a status string (as written by hook_runner.sh) to a priority integer.
+# SYNC: priority values must be kept in sync with _status_priority() in hook_runner.sh
 status_to_priority() {
     local status="$1"
     if [[ "${status}" =~ "🐛 Error" ]]; then

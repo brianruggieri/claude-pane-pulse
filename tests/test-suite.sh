@@ -279,125 +279,150 @@ TMP_CONTEXT="${STATE_DIR}/test-context.txt"
 rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
 
 # pre-tool: file editing tools
+# Note: rm -f before each test ensures priority-aware writes start from a clean state
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"foo.sh"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Edit → ✏️ Editing"    "✏️ Editing"   "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Write","tool_input":{"file_path":"out.txt"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Write → ✏️ Editing"   "✏️ Editing"   "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Read","tool_input":{"file_path":"foo.sh"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Read → 📖 Reading"    "📖 Reading"   "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"WebFetch","tool_input":{"url":"https://example.com"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "WebFetch → 🌐 Browsing"  "🌐 Browsing"  "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Task","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Task → 🤖 Delegating"  "🤖 Delegating"  "${result}"
 
 # pre-tool: Bash sub-matching
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash npm test → 🧪 Testing"   "🧪 Testing"    "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npx jest --coverage"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash jest → 🧪 Testing"       "🧪 Testing"    "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"webpack --mode production"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash webpack → 🔨 Building"   "🔨 Building"   "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm install --save-dev react"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash npm install → 📦 Installing"  "📦 Installing"  "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash git push → ⬆️ Pushing"   "⬆️ Pushing"    "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git pull --rebase"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash git pull → ⬇️ Pulling"   "⬇️ Pulling"    "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"docker build -t myapp ."}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash docker → 🐳 Docker"      "🐳 Docker"     "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "Bash generic → 🖥️ Running"    "🖥️ Running"    "${result}"
 
 # pre-tool: ToolSearch (Claude's built-in tool discovery)
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"ToolSearch","tool_input":{"query":"slack"}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "ToolSearch → 📖 Reading"       "📖 Reading"    "${result}"
 
 # pre-tool: MCP tool classification (action verb heuristic)
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__filesystem__read_file","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp read_file → 📖 Reading"    "📖 Reading"    "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__filesystem__list_directory","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp list_directory → 📖 Reading" "📖 Reading"  "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__github__search_code","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp search_code → 📖 Reading"  "📖 Reading"    "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__filesystem__write_file","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp write_file → ✏️ Editing"   "✏️ Editing"    "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__github__create_pull_request","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp create_pull_request → ✏️ Editing" "✏️ Editing" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__github__add_issue_comment","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp add_issue_comment → 📤 Sending" "📤 Sending" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__playwright__browser_navigate","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp browser_navigate → 🌐 Browsing" "🌐 Browsing" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__playwright__browser_click","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp browser_click → 🌐 Browsing"    "🌐 Browsing" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"mcp__plugin_context7__resolve-library-id","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "mcp resolve-library-id → 📖 Reading" "📖 Reading" "${result}"
 
 # pre-tool: completely unknown tool → generic fallback
+rm -f "${TMP_STATUS}"
 result=$(echo '{"tool_name":"SomeRandomTool","tool_input":{}}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
@@ -583,6 +608,7 @@ result=$(echo '{"permission":"needed"}' \
       bash "${LIB_DIR}/hook_runner.sh" event PermissionRequest && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "event quiet: PermissionRequest → ⏸️ Awaiting approval" "⏸️ Awaiting approval" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"message":"Action required: choose one option"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
       bash "${LIB_DIR}/hook_runner.sh" event Notification && cat "${TMP_STATUS}" 2>/dev/null || true)
@@ -617,11 +643,13 @@ result=$(echo '{}' \
 assert_equals "event quiet: unknown event suppressed" "✏️ Editing" "${result}"
 
 # event handler: verbose profile
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event SessionStart && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "event verbose: SessionStart → 🚀 Session started" "🚀 Session started" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event PreCompact && cat "${TMP_STATUS}" 2>/dev/null || true)
@@ -631,6 +659,7 @@ TMP_AGENTS="${STATE_DIR}/test-agents.txt"
 rm -f "${TMP_AGENTS}"
 
 # SubagentStart increments counter: 0 → 1
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_AGENTS_FILE="${TMP_AGENTS}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event SubagentStart && cat "${TMP_STATUS}" 2>/dev/null || true)
@@ -678,6 +707,7 @@ fi
 
 # SubagentStop in verbose still writes status even after decrement
 echo '1' > "${TMP_AGENTS}"
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_AGENTS_FILE="${TMP_AGENTS}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event SubagentStop && cat "${TMP_STATUS}" 2>/dev/null || true)
@@ -685,6 +715,7 @@ assert_equals "event verbose: SubagentStop → ✅ Subagent finished" "✅ Subag
 
 # No CCP_AGENTS_FILE set → SubagentStart/Stop are no-ops for counter, verbose status still fires
 rm -f "${TMP_AGENTS}"
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event SubagentStart && cat "${TMP_STATUS}" 2>/dev/null || true)
@@ -697,31 +728,37 @@ fi
 
 rm -f "${TMP_AGENTS}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event TeammateIdle && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "event verbose: TeammateIdle → 👥 Teammate idle" "👥 Teammate idle" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event ConfigChange && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "event verbose: ConfigChange → ⚙️ Config changed" "⚙️ Config changed" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event WorktreeCreate && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "event verbose: WorktreeCreate fallback → 🔔 WorktreeCreate" "🔔 WorktreeCreate" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event WorktreeRemove && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "event verbose: WorktreeRemove fallback → 🔔 WorktreeRemove" "🔔 WorktreeRemove" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{"message":"Background refresh complete"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event Notification && cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_equals "event verbose: generic Notification → 🔔 Notification" "🔔 Notification" "${result}"
 
+rm -f "${TMP_STATUS}"
 result=$(echo '{}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=verbose \
       bash "${LIB_DIR}/hook_runner.sh" event UnknownFutureEvent && cat "${TMP_STATUS}" 2>/dev/null || true)
@@ -1030,6 +1067,118 @@ assert_contains "bin/ccp: invalid profile emits clear error" \
     "Invalid status profile 'noisy'" "$(cat "${cli_err}" 2>/dev/null || true)"
 
 rm -rf "${CLI_TMP_DIR}"
+
+# ── Tests: priority-aware status writes ────────────────────────────────────────
+
+echo ""
+echo "priority-aware status writes (_priority_write)"
+
+TMP_STATUS="${STATE_DIR}/test-priority-status.txt"
+TMP_CONTEXT="${STATE_DIR}/test-priority-context.txt"
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
+# 1. Pre-tool blocked by Awaiting approval (p88 > p65 Editing)
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"foo.sh"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: pre-tool Edit blocked by ⏸️ Awaiting approval" "⏸️ Awaiting approval" "${result}"
+
+# 2. Pre-tool blocked by Error (p100 > p55 Reading)
+printf '🐛 Error' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Read","tool_input":{"file_path":"foo.sh"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: pre-tool Read blocked by 🐛 Error" "🐛 Error" "${result}"
+
+# 3. Event PermissionRequest wins over Running (p88 > p55)
+printf '🖥️ Running' > "${TMP_STATUS}"
+result=$(echo '{"permission":"needed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event PermissionRequest && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: PermissionRequest wins over 🖥️ Running" "⏸️ Awaiting approval" "${result}"
+
+# 4. Equal priority allows write (p88 == p88)
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"permission":"needed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event PermissionRequest && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: equal priority allows write (⏸️ → ⏸️)" "⏸️ Awaiting approval" "${result}"
+
+# 5. Completion bypasses priority (Tests passed over Awaiting approval)
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"5 tests passed"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: ✅ Tests passed bypasses ⏸️ Awaiting approval" "✅ Tests passed" "${result}"
+
+# 6. Error always wins (post-tool-failure over Testing)
+printf '🧪 Testing' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"error":"boom"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool-failure && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: 🐛 Error always wins over 🧪 Testing" "🐛 Error" "${result}"
+
+# 7. TaskCompleted bypasses priority (over Editing)
+printf '✏️ Editing' > "${TMP_STATUS}"
+result=$(echo '{"task":"done"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" CCP_STATUS_PROFILE=quiet \
+      bash "${LIB_DIR}/hook_runner.sh" event TaskCompleted && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: 🏁 Completed bypasses ✏️ Editing" "🏁 Completed" "${result}"
+
+# 8. Delegating wins over Running (p70 > p55)
+printf '🖥️ Running' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Agent","tool_input":{}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: 🤖 Delegating wins over 🖥️ Running" "🤖 Delegating" "${result}"
+
+# 9. Running blocked by Delegating (p55 < p70)
+printf '🤖 Delegating' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: 🖥️ Running blocked by 🤖 Delegating" "🤖 Delegating" "${result}"
+
+# 10. User-prompt Thinking resets regardless of priority
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+echo '{"prompt":"Fix the bug"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt
+result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: user-prompt 💭 Thinking resets ⏸️ Awaiting approval" "💭 Thinking" "${result}"
+
+# 11. Stop clears regardless of priority
+printf '🐛 Error' > "${TMP_STATUS}"
+echo '{}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "priority: stop clears 🐛 Error regardless" "${result}"
+
+# 12. Post-tool clear resets regardless of priority
+printf '⏸️ Awaiting approval' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo hi"},"tool_response":"hi"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "priority: post-tool generic Bash clears ⏸️ Awaiting approval" "${result}"
+
+# 13. Equal priority allows transition (Reading → Browsing, both p55)
+printf '📖 Reading' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"WebFetch","tool_input":{"url":"https://example.com"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: 🌐 Browsing replaces 📖 Reading (equal p55)" "🌐 Browsing" "${result}"
+
+# 14. Empty file allows any write
+rm -f "${TMP_STATUS}"
+printf '' > "${TMP_STATUS}"
+result=$(echo '{"tool_name":"Read","tool_input":{"file_path":"foo.sh"}}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" pre-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "priority: empty file allows 📖 Reading" "📖 Reading" "${result}"
+
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
