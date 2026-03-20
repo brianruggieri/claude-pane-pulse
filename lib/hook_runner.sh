@@ -420,65 +420,21 @@ case "${mode}" in
             exit 0
         fi
 
+        # Strip shell prompt prefixes from pasted terminal content before
+        # extracting first-5-words so prefix tokens don't fill the word budget.
+        sanitized_prompt=""
+        sanitized_prompt=$(printf '%s' "${raw_prompt}" \
+            | sed 's/^([^)]*)[[:space:]]*//' \
+            | sed 's/^[a-zA-Z0-9._-]*@[a-zA-Z0-9._-]*[[:space:]]*//' \
+            | sed 's/^[%$#>][[:space:]]*//')
+
         # Write first-5-words placeholder immediately so the title updates at once
         initial=""
-        initial=$(printf '%s' "${raw_prompt}" \
+        initial=$(printf '%s' "${sanitized_prompt}" \
             | awk '{n=(NF<5?NF:5); for(i=1;i<=n;i++) printf "%s%s",$i,(i<n?" ":""); print ""}')
+
         [[ -n "${initial}" ]] && atomic_write "${CCP_CONTEXT_FILE}" "${initial}"
         _dbg_event "context_set" "context=${initial}" "source=first-5-words"
-
-        # AI context summarization is opt-in (--ai-context flag / CCP_ENABLE_AI_CONTEXT=true).
-        # It sends your prompt text to claude-haiku and counts against your subscription.
-        # Skip unless explicitly enabled.
-        if [[ "${CCP_ENABLE_AI_CONTEXT:-false}" != "true" ]]; then
-            _dbg "AI context summarization not enabled (use --ai-context to enable)"
-            exit 0
-        fi
-
-        # Inline strategy: the summary is produced by the main Claude session
-        # (via --append-system-prompt injection) and captured in the post-tool
-        # handler.  No separate API call needed — skip the Haiku subprocess.
-        if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]]; then
-            _dbg_event "ai_context_pending" "strategy=inline" "waiting_for=post-tool CCP_TASK_SUMMARY marker"
-            _dbg "AI context strategy=inline — skipping haiku subprocess"
-            exit 0
-        fi
-
-        # Background AI distillation — rewrites the context file with a proper
-        # 3-5 word semantic summary once the haiku call completes (~1-3s).
-        # CCP vars are unset inside the subshell so any hooks fired by the child
-        # claude process become no-ops (hook_runner exits early when vars unset).
-        _ccp_ctx="${CCP_CONTEXT_FILE}"
-        _ccp_proj="${CCP_PROJECT_NAME:-}"
-        _ccp_raw="${raw_prompt}"
-        (
-            set +e
-            unset CCP_STATUS_FILE CCP_CONTEXT_FILE
-
-            claude_bin=$(command -v claude 2>/dev/null \
-                || command -v claude-code 2>/dev/null || echo "")
-            [[ -z "${claude_bin}" ]] && exit 0
-
-            # Strip project name from prompt so the summary doesn't repeat it
-            task_text="${_ccp_raw}"
-            if [[ -n "${_ccp_proj}" ]]; then
-                task_text=$(printf '%s' "${task_text}" \
-                    | sed "s/ (${_ccp_proj})[^,]*,\{0,1\}[[:space:]]*/  /g" \
-                    | sed "s/${_ccp_proj}//g" \
-                    | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-            fi
-
-            summary=$(printf 'Summarize this developer task in 3-5 words. Title-case. No punctuation. No quotes. Reply with only the words, nothing else. Task: %s' \
-                    "${task_text}" \
-                | "${claude_bin}" --print --model claude-haiku-4-5-20251001 \
-                2>/dev/null | head -1 \
-                | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//') || true
-
-            [[ -n "${summary}" ]] && atomic_write "${_ccp_ctx}" "${summary}"
-            _dbg_event "ai_summary" "summary=${summary}" "strategy=haiku"
-            _dbg "distilled: ${summary}"
-        ) &
-        disown 2>/dev/null || true
         ;;
 
     stop)

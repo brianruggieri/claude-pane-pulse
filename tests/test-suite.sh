@@ -483,6 +483,36 @@ result=$(printf '%s' '{"prompt":"Refactor the database layer"}' \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_contains "user-prompt: no trailing newline" "Refactor the database" "${result}"
 
+echo ""
+echo "user-prompt: context sanitization"
+
+TMP_STATUS="${STATE_DIR}/test-sanitize-status.txt"
+TMP_CONTEXT="${STATE_DIR}/test-sanitize-context.txt"
+
+# Pasted terminal content with venv prefix
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(printf '{"prompt":"(venv) brianruggieri@Flexias-MacBook-Pro candidate-eval %% fix the bug"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_not_contains "sanitize: venv prefix stripped" "(venv)" "${result}"
+assert_contains "sanitize: actual content preserved" "fix the bug" "${result}"
+
+# Pasted terminal with user@host prefix (no venv)
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(printf '{"prompt":"user@hostname project %% do the thing"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_not_contains "sanitize: user@host stripped" "user@hostname" "${result}"
+
+# Shell prompt character stripped
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(printf '{"prompt":"$ npm test"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "sanitize: $ prompt stripped" "npm test" "${result}"
+
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
 # stop handler clears status file
 printf '🧪 Testing' > "${TMP_STATUS}"
 echo '{}' \
