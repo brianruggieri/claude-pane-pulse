@@ -272,7 +272,7 @@ Any unrecognized `-*` flag is also forwarded, so new Claude flags just work.
 ### Full forwarded flag list
 
 **No value:**
-`-c` / `--continue`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--verbose`, `--ide`, `--no-ide`, `--fork-session`, `--chrome`, `--no-chrome`, `--no-session-persistence`, `--include-partial-messages`, `--replay-user-messages`, `--strict-mcp-config`, `--mcp-debug`
+`-c` / `--continue`, `-p` / `--print`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--verbose`, `--ide`, `--no-ide`, `--fork-session`, `--chrome`, `--no-chrome`, `--no-session-persistence`, `--include-partial-messages`, `--replay-user-messages`, `--strict-mcp-config`, `--mcp-debug`
 
 **Required value:**
 `--model`, `--permission-mode`, `--effort`, `--system-prompt`, `--append-system-prompt`, `--debug-file`, `--session-id`, `--output-format`, `--input-format`, `--settings`, `--setting-sources`, `--fallback-model`, `--max-budget-usd`, `--json-schema`, `--agent`

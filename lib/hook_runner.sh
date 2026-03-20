@@ -118,7 +118,7 @@ _status_priority() {
         *"Awaiting approval"*) echo 88 ;;
         *"Input needed"*)  echo 85 ;;
         *Building*|*Testing*|*Installing*) echo 80 ;;
-        *Pushing*|*Pulling*|*Merging*) echo 75 ;;
+        *Pushing*|*Pulling*|*Merging*|*Rebasing*|*Cherry-picking*) echo 75 ;;
         *Docker*|*Thinking*|*Delegating*) echo 70 ;;
         *Editing*)         echo 65 ;;
         *"Tests passed"*|*Committed*|*Completed*|*"Subagent finished"*) echo 60 ;;
@@ -479,6 +479,12 @@ case "${mode}" in
         _ccp_ctx="${CCP_CONTEXT_FILE}"
         _ccp_truncated="${_truncated}"
         _ccp_claude_bin="${CCP_CLAUDE_BIN:-}"
+        # Snapshot current context so the subprocess can detect if a newer
+        # prompt has arrived before it finishes (race guard).
+        _ccp_expected_ctx=""
+        if [[ -f "${CCP_CONTEXT_FILE}" ]]; then
+            _ccp_expected_ctx=$(< "${CCP_CONTEXT_FILE}") || _ccp_expected_ctx=""
+        fi
         (
             set +e
             # CLAUDECODE: env var set by Claude Code itself. Must be cleared or
@@ -499,7 +505,15 @@ case "${mode}" in
                 2>/dev/null | head -1 \
                 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//') || true
 
-            [[ -n "${summary}" ]] && atomic_write "${_ccp_ctx}" "${summary}"
+            # Race guard: if a newer prompt has updated the context file
+            # since we started, skip the write to avoid overwriting it.
+            if [[ -n "${summary}" ]]; then
+                _current_ctx=""
+                [[ -f "${_ccp_ctx}" ]] && _current_ctx=$(< "${_ccp_ctx}") || _current_ctx=""
+                if [[ "${_current_ctx}" == "${_ccp_expected_ctx}" ]]; then
+                    atomic_write "${_ccp_ctx}" "${summary}"
+                fi
+            fi
             _dbg_event "ai_summary" "summary=${summary}" "strategy=stop-haiku"
         ) &
         disown 2>/dev/null || true

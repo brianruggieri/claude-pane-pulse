@@ -491,7 +491,7 @@ TMP_CONTEXT="${STATE_DIR}/test-sanitize-context.txt"
 
 # Pasted terminal content with venv prefix
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-result=$(printf '{"prompt":"(venv) brianruggieri@Flexias-MacBook-Pro candidate-eval %% fix the bug"}' \
+result=$(printf '%s' '{"prompt":"(venv) brianruggieri@Flexias-MacBook-Pro candidate-eval % fix the bug"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_not_contains "sanitize: venv prefix stripped" "(venv)" "${result}"
@@ -499,14 +499,14 @@ assert_contains "sanitize: actual content preserved" "fix the bug" "${result}"
 
 # Pasted terminal with user@host prefix (no venv)
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-result=$(printf '{"prompt":"user@hostname project %% do the thing"}' \
+result=$(printf '%s' '{"prompt":"user@hostname project % do the thing"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_not_contains "sanitize: user@host stripped" "user@hostname" "${result}"
 
 # Shell prompt character stripped
 rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-result=$(printf '{"prompt":"$ npm test"}' \
+result=$(printf '%s' '{"prompt":"$ npm test"}' \
     | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_equals "sanitize: $ prompt stripped" "npm test" "${result}"
@@ -552,8 +552,12 @@ printf '%s' '{"last_assistant_message":"I fixed the authentication flow by updat
       CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_1}" \
       CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
       bash "${LIB_DIR}/hook_runner.sh" stop
-sleep 2
-result=$(cat "${HAIKU_CTX_1}" 2>/dev/null || true)
+result=""
+for _ in {1..20}; do
+    [[ -f "${HAIKU_CTX_1}" ]] && result=$(cat "${HAIKU_CTX_1}" 2>/dev/null || true)
+    [[ -n "${result}" ]] && break
+    sleep 0.25
+done
 assert_equals "stop-haiku: writes summary to context file" "Fixed Auth Login Flow" "${result}"
 # Also verify status was still cleared (existing behavior preserved)
 status_result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
@@ -567,7 +571,7 @@ printf '%s' '{"last_assistant_message":"I fixed the bug."}' \
       CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_2}" \
       CCP_ENABLE_AI_CONTEXT=false CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
       bash "${LIB_DIR}/hook_runner.sh" stop
-sleep 2
+sleep 1
 result=$(cat "${HAIKU_CTX_2}" 2>/dev/null || true)
 assert_empty "stop-haiku: skips when AI context disabled" "${result}"
 
@@ -579,7 +583,7 @@ printf '%s' '{"last_assistant_message":""}' \
       CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_3}" \
       CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
       bash "${LIB_DIR}/hook_runner.sh" stop
-sleep 2
+sleep 1
 result=$(cat "${HAIKU_CTX_3}" 2>/dev/null || true)
 assert_empty "stop-haiku: skips when last_assistant_message is empty" "${result}"
 
@@ -591,7 +595,7 @@ printf '%s' '{"some_other_field":"hello"}' \
       CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_4}" \
       CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
       bash "${LIB_DIR}/hook_runner.sh" stop
-sleep 2
+sleep 1
 result=$(cat "${HAIKU_CTX_4}" 2>/dev/null || true)
 assert_empty "stop-haiku: skips when last_assistant_message field missing" "${result}"
 
@@ -621,8 +625,12 @@ printf '%s' "${json_long}" \
       CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_TRUNC_DIR}/claude" \
       MOCK_TRUNC_DIR_SIDECAR="${MOCK_SIDECAR}" \
       bash "${LIB_DIR}/hook_runner.sh" stop
-sleep 2
-result=$(cat "${HAIKU_CTX_5}" 2>/dev/null || true)
+result=""
+for _ in {1..20}; do
+    [[ -f "${HAIKU_CTX_5}" ]] && result=$(cat "${HAIKU_CTX_5}" 2>/dev/null || true)
+    [[ -n "${result}" ]] && break
+    sleep 0.25
+done
 assert_equals "stop-haiku: truncated message produces summary" "Truncation Test Summary" "${result}"
 # Verify the captured input contains " ... " (truncation marker)
 if [[ -f "${MOCK_SIDECAR}" ]]; then
@@ -656,8 +664,12 @@ printf '%s' '{"last_assistant_message":"I fixed the bug by adding a null check."
       CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_6}" \
       CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDECODE_DIR}/claude" \
       bash "${LIB_DIR}/hook_runner.sh" stop
-sleep 2
-result=$(cat "${HAIKU_CTX_6}" 2>/dev/null || true)
+result=""
+for _ in {1..20}; do
+    [[ -f "${HAIKU_CTX_6}" ]] && result=$(cat "${HAIKU_CTX_6}" 2>/dev/null || true)
+    [[ -n "${result}" ]] && break
+    sleep 0.25
+done
 assert_equals "stop-haiku: CLAUDECODE is unset in haiku subprocess" "CLAUDECODE_ABSENT" "${result}"
 rm -rf "${MOCK_CLAUDECODE_DIR}"
 

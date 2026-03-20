@@ -149,7 +149,7 @@ Additional hooks fire for lifecycle and permission events. These are only surfac
 | SessionStart | `🚀 Starting` |
 | PreCompact | `📦 Compacting` |
 | SubagentStart | `🤖 Delegating` |
-| SubagentStop | `✅ Complete` |
+| SubagentStop | `✅ Subagent finished` |
 | TeammateIdle | `⏸️ Teammate idle` |
 | ConfigChange | `⚙️ Configuring` |
 
