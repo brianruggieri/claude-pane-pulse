@@ -41,8 +41,8 @@ save_session() {
 
 # prune_dead_sessions: remove entries whose process is no longer running.
 # Rewrites SESSION_FILE in-place so all subsequent reads see only live sessions.
-# Also cleans up orphan state files (status, context, branch, monitor PID,
-# inline_captured) left behind by sessions killed without their EXIT trap.
+# Also cleans up orphan state files (status, context, branch, monitor PID)
+# left behind by sessions killed without their EXIT trap.
 prune_dead_sessions() {
     [[ ! -f "${SESSION_FILE}" ]] && return
 
@@ -63,7 +63,7 @@ prune_dead_sessions() {
     local f pid
     for f in "${STATE_DIR}"/status.*.txt "${STATE_DIR}"/context.*.txt \
              "${STATE_DIR}"/branch.*.txt "${STATE_DIR}"/agents.*.txt \
-             "${STATE_DIR}"/monitor.*.pid "${STATE_DIR}"/inline_captured.*; do
+             "${STATE_DIR}"/monitor.*.pid; do
         [[ -f "${f}" ]] || continue
         pid=$(basename "${f}" | grep -o '[0-9]\+') || continue
         if ! kill -0 "${pid}" 2>/dev/null; then

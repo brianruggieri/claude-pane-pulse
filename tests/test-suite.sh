@@ -483,6 +483,36 @@ result=$(printf '%s' '{"prompt":"Refactor the database layer"}' \
       bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
 assert_contains "user-prompt: no trailing newline" "Refactor the database" "${result}"
 
+echo ""
+echo "user-prompt: context sanitization"
+
+TMP_STATUS="${STATE_DIR}/test-sanitize-status.txt"
+TMP_CONTEXT="${STATE_DIR}/test-sanitize-context.txt"
+
+# Pasted terminal content with venv prefix
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(printf '%s' '{"prompt":"(venv) brianruggieri@Flexias-MacBook-Pro candidate-eval % fix the bug"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_not_contains "sanitize: venv prefix stripped" "(venv)" "${result}"
+assert_contains "sanitize: actual content preserved" "fix the bug" "${result}"
+
+# Pasted terminal with user@host prefix (no venv)
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(printf '%s' '{"prompt":"user@hostname project % do the thing"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_not_contains "sanitize: user@host stripped" "user@hostname" "${result}"
+
+# Shell prompt character stripped
+rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
+result=$(printf '%s' '{"prompt":"$ npm test"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "sanitize: $ prompt stripped" "npm test" "${result}"
+
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
 # stop handler clears status file
 printf '🧪 Testing' > "${TMP_STATUS}"
 echo '{}' \
@@ -490,6 +520,161 @@ echo '{}' \
       bash "${LIB_DIR}/hook_runner.sh" stop
 result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_empty "stop empties status file"  "${result}"
+
+# ── Tests: stop-hook haiku summarization ──────────────────────────────────────
+
+echo ""
+echo "stop-hook haiku summarization"
+
+# Set up a mock claude binary that captures stdin and outputs a fixed summary
+MOCK_CLAUDE_DIR=$(mktemp -d)
+cat > "${MOCK_CLAUDE_DIR}/claude" <<'MOCK'
+#!/usr/bin/env bash
+# Mock claude binary — reads stdin, outputs a fixed summary
+cat > /dev/null  # consume stdin
+echo "Fixed Auth Login Flow"
+MOCK
+chmod +x "${MOCK_CLAUDE_DIR}/claude"
+
+# Each test uses a unique context file to avoid races with disowned background subprocesses
+HAIKU_CTX_1="${STATE_DIR}/haiku-ctx-1.txt"
+HAIKU_CTX_2="${STATE_DIR}/haiku-ctx-2.txt"
+HAIKU_CTX_3="${STATE_DIR}/haiku-ctx-3.txt"
+HAIKU_CTX_4="${STATE_DIR}/haiku-ctx-4.txt"
+HAIKU_CTX_5="${STATE_DIR}/haiku-ctx-5.txt"
+HAIKU_CTX_6="${STATE_DIR}/haiku-ctx-6.txt"
+
+# Test 1: stop hook with AI context enabled + last_assistant_message → haiku writes summary
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_1}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+printf '%s' '{"last_assistant_message":"I fixed the authentication flow by updating the login handler to properly validate tokens."}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_1}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+result=""
+for _ in {1..20}; do
+    [[ -f "${HAIKU_CTX_1}" ]] && result=$(cat "${HAIKU_CTX_1}" 2>/dev/null || true)
+    [[ -n "${result}" ]] && break
+    sleep 0.25
+done
+assert_equals "stop-haiku: writes summary to context file" "Fixed Auth Login Flow" "${result}"
+# Also verify status was still cleared (existing behavior preserved)
+status_result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "stop-haiku: status still cleared" "${status_result}"
+
+# Test 2: stop hook skips haiku when CCP_ENABLE_AI_CONTEXT is not true
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_2}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+printf '%s' '{"last_assistant_message":"I fixed the bug."}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_2}" \
+      CCP_ENABLE_AI_CONTEXT=false CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 1
+result=$(cat "${HAIKU_CTX_2}" 2>/dev/null || true)
+assert_empty "stop-haiku: skips when AI context disabled" "${result}"
+
+# Test 3: stop hook skips haiku when last_assistant_message is empty
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_3}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+printf '%s' '{"last_assistant_message":""}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_3}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 1
+result=$(cat "${HAIKU_CTX_3}" 2>/dev/null || true)
+assert_empty "stop-haiku: skips when last_assistant_message is empty" "${result}"
+
+# Test 4: stop hook skips haiku when last_assistant_message field is missing from JSON
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_4}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+printf '%s' '{"some_other_field":"hello"}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_4}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 1
+result=$(cat "${HAIKU_CTX_4}" 2>/dev/null || true)
+assert_empty "stop-haiku: skips when last_assistant_message field missing" "${result}"
+
+# Test 5: messages >1000 chars are truncated to first 500 + "..." + last 500
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_5}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+# Build a mock claude that echoes back a snippet of what it received on stdin
+# so we can verify truncation happened
+MOCK_TRUNC_DIR=$(mktemp -d)
+cat > "${MOCK_TRUNC_DIR}/claude" <<'MOCK'
+#!/usr/bin/env bash
+# Mock claude binary — captures stdin content to a file for inspection
+input=$(cat)
+# Write the received input to a sidecar file for the test to inspect
+echo "${input}" > "${MOCK_TRUNC_DIR_SIDECAR}"
+echo "Truncation Test Summary"
+MOCK
+chmod +x "${MOCK_TRUNC_DIR}/claude"
+MOCK_SIDECAR="${MOCK_TRUNC_DIR}/captured_input.txt"
+
+# Build a 1200-char message: 600 A's + 600 B's
+long_msg=$(printf '%0600d' 0 | tr '0' 'A')$(printf '%0600d' 0 | tr '0' 'B')
+json_long=$(printf '{"last_assistant_message":"%s"}' "${long_msg}")
+printf '%s' "${json_long}" \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_5}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_TRUNC_DIR}/claude" \
+      MOCK_TRUNC_DIR_SIDECAR="${MOCK_SIDECAR}" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+result=""
+for _ in {1..20}; do
+    [[ -f "${HAIKU_CTX_5}" ]] && result=$(cat "${HAIKU_CTX_5}" 2>/dev/null || true)
+    [[ -n "${result}" ]] && break
+    sleep 0.25
+done
+assert_equals "stop-haiku: truncated message produces summary" "Truncation Test Summary" "${result}"
+# Verify the captured input contains " ... " (truncation marker)
+if [[ -f "${MOCK_SIDECAR}" ]]; then
+    captured=$(cat "${MOCK_SIDECAR}" 2>/dev/null || true)
+    if [[ "${captured}" == *" ... "* ]]; then
+        pass "stop-haiku: truncated message contains ' ... ' marker"
+    else
+        fail "stop-haiku: truncated message contains ' ... ' marker" "captured input did not contain ' ... '"
+    fi
+else
+    fail "stop-haiku: truncated message contains ' ... ' marker" "sidecar file not found"
+fi
+rm -rf "${MOCK_TRUNC_DIR}"
+
+# Test 6: CLAUDECODE env var is unset in the haiku subprocess
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_6}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+MOCK_CLAUDECODE_DIR=$(mktemp -d)
+cat > "${MOCK_CLAUDECODE_DIR}/claude" <<'MOCK'
+#!/usr/bin/env bash
+cat > /dev/null
+if [[ -z "${CLAUDECODE:-}" ]]; then
+    echo "CLAUDECODE_ABSENT"
+else
+    echo "CLAUDECODE_PRESENT"
+fi
+MOCK
+chmod +x "${MOCK_CLAUDECODE_DIR}/claude"
+printf '%s' '{"last_assistant_message":"I fixed the bug by adding a null check."}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_6}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDECODE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+result=""
+for _ in {1..20}; do
+    [[ -f "${HAIKU_CTX_6}" ]] && result=$(cat "${HAIKU_CTX_6}" 2>/dev/null || true)
+    [[ -n "${result}" ]] && break
+    sleep 0.25
+done
+assert_equals "stop-haiku: CLAUDECODE is unset in haiku subprocess" "CLAUDECODE_ABSENT" "${result}"
+rm -rf "${MOCK_CLAUDECODE_DIR}"
+
+rm -rf "${MOCK_CLAUDE_DIR}"
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
 
 # post-tool handler writes completion statuses from Bash output
 printf '🧪 Testing' > "${TMP_STATUS}"
@@ -704,6 +889,24 @@ result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git checkout main"},
       bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_BRANCH}" 2>/dev/null || true)
 assert_equals "post-tool: branch detection fires without CCP_STATUS_FILE" "${expected_branch}" "${result}"
 rm -f "${TMP_BRANCH}"
+
+echo ""
+echo "post-tool: git commit message capture"
+
+TMP_STATUS="${STATE_DIR}/test-commit-ctx-status.txt"
+TMP_CONTEXT="${STATE_DIR}/test-commit-ctx-context.txt"
+
+# post-tool: git commit writes commit subject to context file
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+result=$(echo '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"Fix null check in parser\""},"tool_response":"[main abc1234] Fix null check in parser\n 1 file changed, 2 insertions(+)"}' \
+    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
+      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
+assert_equals "commit: subject written to context file" "Fix null check in parser" "${result}"
+# Status should also be set
+status_result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_equals "commit: status set to Committed" "💾 Committed" "${status_result}"
+
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
 
 # event handler: quiet (default) high-signal coverage
 result=$(echo '{"permission":"needed"}' \
@@ -985,161 +1188,6 @@ assert_equals "teardown preserves non-CCP hooks" "1" "${remaining}"
 rm -rf "${HOOKS_TMP_DIR}"
 rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
 
-# ── Tests: inline AI context (post-tool CCP_TASK_SUMMARY detection) ───────────
-
-echo ""
-echo "inline AI context (post-tool CCP_TASK_SUMMARY detection)"
-
-TMP_STATUS=$(mktemp)
-TMP_CONTEXT=$(mktemp)
-
-# Fixed PID used across all inline tests — mirrors the CCP_SESSION_PID export in bin/ccp
-TEST_PID=99999
-# Marker file created by hook_runner.sh after first inline capture
-INLINE_CAPTURED="${STATE_DIR}/inline_captured.${TEST_PID}"
-
-# post-tool: PID-scoped marker in echo output writes to context file
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}" "${INLINE_CAPTURED}"
-result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo CCP_TASK_SUMMARY_${TEST_PID}:Fix JWT Validation Bug\"},\"tool_response\":\"CCP_TASK_SUMMARY_${TEST_PID}:Fix JWT Validation Bug\"}" \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_equals "inline: PID-scoped marker extracted" "Fix JWT Validation Bug" "${result}"
-
-# post-tool: marker with surrounding whitespace is trimmed
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}" "${INLINE_CAPTURED}"
-result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo CCP_TASK_SUMMARY_${TEST_PID}:  Refactor Auth Module  \"},\"tool_response\":\"CCP_TASK_SUMMARY_${TEST_PID}:  Refactor Auth Module  \"}" \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_equals "inline: whitespace around summary trimmed" "Refactor Auth Module" "${result}"
-
-# post-tool: marker with quotes is cleaned
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}" "${INLINE_CAPTURED}"
-result=$(printf '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY_%s:Update Login UI"},"tool_response":"CCP_TASK_SUMMARY_%s:'\''Update Login UI'\''"}' \
-        "${TEST_PID}" "${TEST_PID}" \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_equals "inline: quotes stripped from summary" "Update Login UI" "${result}"
-
-# post-tool: GENERIC (unscoped) marker does NOT match — this is the false-positive fix.
-# Source files on disk contain CCP_TASK_SUMMARY: without a PID; grep/cat of those
-# files must never overwrite a previously captured summary.
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-printf 'previously captured summary' > "${TMP_CONTEXT}"
-result=$(echo '{"tool_name":"Bash","tool_input":{"command":"grep CCP_TASK_SUMMARY lib/hook_runner.sh"},"tool_response":"CCP_TASK_SUMMARY:Do Not Overwrite"}' \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_equals "inline: unscoped marker ignored (false-positive guard)" "previously captured summary" "${result}"
-
-# post-tool: marker from a DIFFERENT PID does not match this session
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-printf 'correct summary' > "${TMP_CONTEXT}"
-result=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo CCP_TASK_SUMMARY_11111:Wrong Session"},"tool_response":"CCP_TASK_SUMMARY_11111:Wrong Session"}' \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_equals "inline: wrong-PID marker ignored" "correct summary" "${result}"
-
-# post-tool: marker is IGNORED when strategy is not inline
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-printf 'existing context' > "${TMP_CONTEXT}"
-result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo CCP_TASK_SUMMARY_${TEST_PID}:Do Not Overwrite\"},\"tool_response\":\"CCP_TASK_SUMMARY_${TEST_PID}:Do Not Overwrite\"}" \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=haiku CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_equals "inline: marker ignored when strategy is haiku" "existing context" "${result}"
-
-# post-tool: marker is IGNORED when AI context is disabled entirely.
-# bin/ccp never exports CCP_AI_CONTEXT_STRATEGY=inline when the feature is off,
-# so explicitly override to haiku here to simulate a clean non-inline environment.
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-printf 'existing context' > "${TMP_CONTEXT}"
-result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo CCP_TASK_SUMMARY_${TEST_PID}:Do Not Overwrite\"},\"tool_response\":\"CCP_TASK_SUMMARY_${TEST_PID}:Do Not Overwrite\"}" \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_AI_CONTEXT_STRATEGY=haiku CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_equals "inline: marker ignored when AI context disabled" "existing context" "${result}"
-
-# post-tool: normal Bash output without marker does NOT touch context file
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-printf 'existing context' > "${TMP_CONTEXT}"
-result=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"},"tool_response":"total 42\ndrwxr-xr-x 5 user staff 160 Jan  1 12:00 ."}' \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_equals "inline: non-marker Bash output preserves context" "existing context" "${result}"
-
-# post-tool: PID-scoped summary + test pass — both context and status captured
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}" "${INLINE_CAPTURED}"
-result=$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"npm test\"},\"tool_response\":\"CCP_TASK_SUMMARY_${TEST_PID}:Fix Tests\n3 tests passed\"}" \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline CCP_SESSION_PID="${TEST_PID}" \
-      bash "${LIB_DIR}/hook_runner.sh" post-tool && cat "${TMP_STATUS}" 2>/dev/null || true)
-assert_equals "inline: summary + test pass both captured (status)" "✅ Tests passed" "${result}"
-result=$(cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_contains "inline: summary + test pass both captured (context)" "Fix Tests" "${result}"
-
-# user-prompt: inline strategy skips Haiku subprocess (just writes first-5-words)
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-result=$(echo '{"prompt":"Fix the login bug in the auth module"}' \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=inline \
-      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_contains "inline: user-prompt still writes first-5-words" "Fix the login bug" "${result}"
-
-# user-prompt: haiku strategy with AI context enabled (no claude binary in PATH)
-# just verify it writes first-5-words and doesn't fail (the background Haiku
-# subprocess will silently fail without claude binary — expected in tests)
-rm -f "${TMP_CONTEXT}" "${TMP_STATUS}"
-result=$(echo '{"prompt":"Refactor the database layer for performance"}' \
-    | CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${TMP_CONTEXT}" \
-      CCP_ENABLE_AI_CONTEXT=true CCP_AI_CONTEXT_STRATEGY=haiku \
-      bash "${LIB_DIR}/hook_runner.sh" user-prompt && cat "${TMP_CONTEXT}" 2>/dev/null || true)
-assert_contains "haiku: user-prompt writes first-5-words" "Refactor the database layer" "${result}"
-
-rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
-
-# ── Tests: bin/ccp AI context strategy parsing ────────────────────────────────
-
-echo ""
-echo "bin/ccp --ai-context-strategy"
-
-BIN_CCP="${PROJECT_DIR}/bin/ccp"
-CLI_TMP_DIR=$(mktemp -d)
-CLI_STATE_DIR="${CLI_TMP_DIR}/state"
-mkdir -p "${CLI_STATE_DIR}"
-CLI_SESSION_FILE="${CLI_STATE_DIR}/sessions.json"
-echo '[]' > "${CLI_SESSION_FILE}"
-
-cli_exit=0
-CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
-STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
-"${BIN_CCP}" --ai-context --ai-context-strategy inline --no-dynamic "strategy test" \
-    >/dev/null 2>/dev/null || cli_exit=$?
-assert_equals "bin/ccp: --ai-context-strategy inline succeeds" "0" "${cli_exit}"
-
-cli_exit=0
-CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
-STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
-"${BIN_CCP}" --ai-context --ai-context-strategy haiku --no-dynamic "strategy test" \
-    >/dev/null 2>/dev/null || cli_exit=$?
-assert_equals "bin/ccp: --ai-context-strategy haiku succeeds" "0" "${cli_exit}"
-
-cli_exit=0
-cli_err="${CLI_TMP_DIR}/invalid-strategy.err"
-CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
-STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
-"${BIN_CCP}" --ai-context --ai-context-strategy bogus --no-dynamic "strategy test" \
-    >/dev/null 2>"${cli_err}" || cli_exit=$?
-assert_equals "bin/ccp: invalid --ai-context-strategy exits 1" "1" "${cli_exit}"
-assert_contains "bin/ccp: invalid strategy emits clear error" \
-    "Invalid AI context strategy 'bogus'" "$(cat "${cli_err}" 2>/dev/null || true)"
-
-rm -rf "${CLI_TMP_DIR}"
-
 # ── Tests: bin/ccp status profile parsing ─────────────────────────────────────
 
 echo ""
@@ -1356,26 +1404,6 @@ CLI_STATE_DIR="${CLI_TMP_DIR}/state"
 mkdir -p "${CLI_STATE_DIR}"
 CLI_SESSION_FILE="${CLI_STATE_DIR}/sessions.json"
 echo '[]' > "${CLI_SESSION_FILE}"
-
-# --append-system-prompt should be filtered from Claude args display
-cli_out="${CLI_TMP_DIR}/startup-inline.out"
-CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
-STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
-"${BIN_CCP}" --ai-context --ai-context-strategy inline --no-dynamic "messaging test" \
-    >"${cli_out}" 2>&1 || true
-assert_not_contains "bin/ccp: inline strategy hides --append-system-prompt from args display" \
-    "--append-system-prompt" "$(cat "${cli_out}" 2>/dev/null || true)"
-
-# Extra user-supplied args should still appear when --append-system-prompt is also injected
-cli_out2="${CLI_TMP_DIR}/startup-inline-extra.out"
-CCP_CLAUDE_CMD=/usr/bin/true CCP_STATUS_PROFILE=quiet \
-STATE_DIR="${CLI_STATE_DIR}" SESSION_FILE="${CLI_SESSION_FILE}" \
-"${BIN_CCP}" --ai-context --ai-context-strategy inline --no-dynamic "messaging test" -- --some-flag \
-    >"${cli_out2}" 2>&1 || true
-assert_contains "bin/ccp: extra args still shown when inline strategy active" \
-    "--some-flag" "$(cat "${cli_out2}" 2>/dev/null || true)"
-assert_not_contains "bin/ccp: --append-system-prompt still hidden when extra args present" \
-    "--append-system-prompt" "$(cat "${cli_out2}" 2>/dev/null || true)"
 
 # --goto: matching session emits "Resuming:" line
 CLI_GOTO_STATE_DIR="${CLI_TMP_DIR}/goto-state"

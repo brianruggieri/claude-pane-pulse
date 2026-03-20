@@ -8,6 +8,7 @@
 #        CCP_CONTEXT_FILE - path to write task context (user prompt)
 #        CCP_STATUS_PROFILE - quiet (default) or verbose
 #        CCP_DEBUG_LOG    - optional path for debug output
+#        CCP_CLAUDE_BIN   - override claude binary path (for testing)
 #
 # Always exits 0 — must never block or fail Claude Code.
 
@@ -117,7 +118,7 @@ _status_priority() {
         *"Awaiting approval"*) echo 88 ;;
         *"Input needed"*)  echo 85 ;;
         *Building*|*Testing*|*Installing*) echo 80 ;;
-        *Pushing*|*Pulling*|*Merging*) echo 75 ;;
+        *Pushing*|*Pulling*|*Merging*|*Rebasing*|*Cherry-picking*) echo 75 ;;
         *Docker*|*Thinking*|*Delegating*) echo 70 ;;
         *Editing*)         echo 65 ;;
         *"Tests passed"*|*Committed*|*Completed*|*"Subagent finished"*) echo 60 ;;
@@ -419,65 +420,22 @@ case "${mode}" in
             exit 0
         fi
 
+        # Strip shell prompt prefixes from pasted terminal content before
+        # extracting first-5-words so prefix tokens don't fill the word budget.
+        sanitized_prompt=""
+        sanitized_prompt=$(printf '%s' "${raw_prompt}" \
+            | sed 's/^([^)]*)[[:space:]]*//' \
+            | sed 's/^[a-zA-Z0-9._-]*@[a-zA-Z0-9._-]*[[:space:]]*//' \
+            | sed 's/^[a-zA-Z0-9._-]*[[:space:]]*[%$#>][[:space:]]*//' \
+            | sed 's/^[%$#>][[:space:]]*//')
+
         # Write first-5-words placeholder immediately so the title updates at once
         initial=""
-        initial=$(printf '%s' "${raw_prompt}" \
+        initial=$(printf '%s' "${sanitized_prompt}" \
             | awk '{n=(NF<5?NF:5); for(i=1;i<=n;i++) printf "%s%s",$i,(i<n?" ":""); print ""}')
+
         [[ -n "${initial}" ]] && atomic_write "${CCP_CONTEXT_FILE}" "${initial}"
         _dbg_event "context_set" "context=${initial}" "source=first-5-words"
-
-        # AI context summarization is opt-in (--ai-context flag / CCP_ENABLE_AI_CONTEXT=true).
-        # It sends your prompt text to claude-haiku and counts against your subscription.
-        # Skip unless explicitly enabled.
-        if [[ "${CCP_ENABLE_AI_CONTEXT:-false}" != "true" ]]; then
-            _dbg "AI context summarization not enabled (use --ai-context to enable)"
-            exit 0
-        fi
-
-        # Inline strategy: the summary is produced by the main Claude session
-        # (via --append-system-prompt injection) and captured in the post-tool
-        # handler.  No separate API call needed — skip the Haiku subprocess.
-        if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]]; then
-            _dbg_event "ai_context_pending" "strategy=inline" "waiting_for=post-tool CCP_TASK_SUMMARY marker"
-            _dbg "AI context strategy=inline — skipping haiku subprocess"
-            exit 0
-        fi
-
-        # Background AI distillation — rewrites the context file with a proper
-        # 3-5 word semantic summary once the haiku call completes (~1-3s).
-        # CCP vars are unset inside the subshell so any hooks fired by the child
-        # claude process become no-ops (hook_runner exits early when vars unset).
-        _ccp_ctx="${CCP_CONTEXT_FILE}"
-        _ccp_proj="${CCP_PROJECT_NAME:-}"
-        _ccp_raw="${raw_prompt}"
-        (
-            set +e
-            unset CCP_STATUS_FILE CCP_CONTEXT_FILE
-
-            claude_bin=$(command -v claude 2>/dev/null \
-                || command -v claude-code 2>/dev/null || echo "")
-            [[ -z "${claude_bin}" ]] && exit 0
-
-            # Strip project name from prompt so the summary doesn't repeat it
-            task_text="${_ccp_raw}"
-            if [[ -n "${_ccp_proj}" ]]; then
-                task_text=$(printf '%s' "${task_text}" \
-                    | sed "s/ (${_ccp_proj})[^,]*,\{0,1\}[[:space:]]*/  /g" \
-                    | sed "s/${_ccp_proj}//g" \
-                    | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-            fi
-
-            summary=$(printf 'Summarize this developer task in 3-5 words. Title-case. No punctuation. No quotes. Reply with only the words, nothing else. Task: %s' \
-                    "${task_text}" \
-                | "${claude_bin}" --print --model claude-haiku-4-5-20251001 \
-                2>/dev/null | head -1 \
-                | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//') || true
-
-            [[ -n "${summary}" ]] && atomic_write "${_ccp_ctx}" "${summary}"
-            _dbg_event "ai_summary" "summary=${summary}" "strategy=haiku"
-            _dbg "distilled: ${summary}"
-        ) &
-        disown 2>/dev/null || true
         ;;
 
     stop)
@@ -494,12 +452,77 @@ case "${mode}" in
         else
             atomic_write "${CCP_STATUS_FILE}" ""
         fi
+
+        # AI context summarization — summarize what Claude just did.
+        # Uses last_assistant_message from the Stop hook payload (added in
+        # Claude Code v1.0.17).  The detached subprocess survives the hook's
+        # 5-second timeout — it runs independently after disown.
+        if [[ "${CCP_ENABLE_AI_CONTEXT:-false}" != "true" ]] || \
+           [[ -z "${CCP_CONTEXT_FILE:-}" ]]; then
+            exit 0
+        fi
+
+        last_msg=""
+        last_msg=$(printf '%s' "${json_input}" | jq -r '.last_assistant_message // ""' 2>/dev/null) || true
+        [[ -z "${last_msg}" ]] && exit 0
+
+        _dbg_event "ai_context_stop" "msg_len=${#last_msg}"
+
+        # Truncate: first 500 + last 500 chars
+        _truncated="${last_msg}"
+        if [[ ${#last_msg} -gt 1000 ]]; then
+            _first="${last_msg:0:500}"
+            _last="${last_msg: -500}"
+            _truncated="${_first} ... ${_last}"
+        fi
+
+        _ccp_ctx="${CCP_CONTEXT_FILE}"
+        _ccp_truncated="${_truncated}"
+        _ccp_claude_bin="${CCP_CLAUDE_BIN:-}"
+        # Snapshot current context so the subprocess can detect if a newer
+        # prompt has arrived before it finishes (race guard).
+        _ccp_expected_ctx=""
+        if [[ -f "${CCP_CONTEXT_FILE}" ]]; then
+            _ccp_expected_ctx=$(< "${CCP_CONTEXT_FILE}") || _ccp_expected_ctx=""
+        fi
+        (
+            set +e
+            # CLAUDECODE: env var set by Claude Code itself. Must be cleared or
+            # nested `claude --print` calls fail (discovered by Quickchat.ai).
+            # CCP_*: unset so hooks fired by the child claude process become no-ops.
+            unset CLAUDECODE CCP_ENABLE_AI_CONTEXT CCP_STATUS_FILE CCP_CONTEXT_FILE
+
+            claude_bin="${_ccp_claude_bin}"
+            if [[ -z "${claude_bin}" ]]; then
+                claude_bin=$(command -v claude 2>/dev/null \
+                    || command -v claude-code 2>/dev/null || echo "")
+            fi
+            [[ -z "${claude_bin}" ]] && exit 0
+
+            summary=$(printf 'Summarize what this AI assistant just did in 3-5 words. Title-case. No punctuation. No quotes. Reply with only the words, nothing else.\n\nResponse:\n%s' \
+                    "${_ccp_truncated}" \
+                | "${claude_bin}" --print --model claude-haiku-4-5-20251001 \
+                2>/dev/null | head -1 \
+                | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//') || true
+
+            # Race guard: if a newer prompt has updated the context file
+            # since we started, skip the write to avoid overwriting it.
+            if [[ -n "${summary}" ]]; then
+                _current_ctx=""
+                [[ -f "${_ccp_ctx}" ]] && _current_ctx=$(< "${_ccp_ctx}") || _current_ctx=""
+                if [[ "${_current_ctx}" == "${_ccp_expected_ctx}" ]]; then
+                    atomic_write "${_ccp_ctx}" "${summary}"
+                fi
+            fi
+            _dbg_event "ai_summary" "summary=${summary}" "strategy=stop-haiku"
+        ) &
+        disown 2>/dev/null || true
         ;;
 
     post-tool)
         # All three output files are checked: status detection writes to
-        # CCP_STATUS_FILE, inline AI context writes to CCP_CONTEXT_FILE, and
-        # branch refresh writes to CCP_BRANCH_FILE.  Skip only if none are set.
+        # CCP_STATUS_FILE, commit message capture writes to CCP_CONTEXT_FILE,
+        # and branch refresh writes to CCP_BRANCH_FILE.  Skip only if none are set.
         [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]] && exit 0
 
         tool=""
@@ -515,37 +538,6 @@ case "${mode}" in
         command_str=""
         command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
 
-        # Inline AI context: detect the PID-scoped CCP_TASK_SUMMARY marker
-        # echoed by the main Claude session (injected via --append-system-prompt).
-        # The marker includes the ccp session PID (CCP_SESSION_PID), making it
-        # unique per session.  Source files on disk always contain the generic
-        # template string (without a real PID), so grep/cat of hook_runner.sh
-        # or bin/ccp can never produce a false match.
-        #
-        # Once captured, a marker file signals future invocations to skip scanning.
-        _inline_captured_file="${STATE_DIR:-/tmp}/inline_captured.${CCP_SESSION_PID:-$$}"
-        if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]] && \
-           [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
-           [[ -n "${CCP_SESSION_PID:-}" ]] && \
-           [[ ! -f "${_inline_captured_file}" ]]; then
-            if [[ "${tool_response}" =~ CCP_TASK_SUMMARY_${CCP_SESSION_PID}:(.+) ]]; then
-                _inline_summary="${BASH_REMATCH[1]}"
-                _inline_summary=$(printf '%s' "${_inline_summary}" \
-                    | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' \
-                    | sed "s/^['\"]//;s/['\"]$//")
-                if [[ -n "${_inline_summary}" ]]; then
-                    atomic_write "${CCP_CONTEXT_FILE}" "${_inline_summary}"
-                    touch "${_inline_captured_file}" 2>/dev/null || true
-                    _dbg_event "ai_summary" "summary=${_inline_summary}" "strategy=inline"
-                    _dbg "inline-summary: ${_inline_summary}"
-                fi
-            else
-                # Bash output didn't contain the inline marker — expected for most
-                # Bash calls, but useful for tracking whether a summary ever arrives.
-                _dbg_event "inline_marker_miss" "command=$(printf '%s' "${command_str}" | head -c 80)" "output_len=${#tool_response}"
-            fi
-        fi
-
         # Branch detection runs even without CCP_STATUS_FILE — skip status
         # detection only, not the entire handler.
         [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]] && exit 0
@@ -557,6 +549,18 @@ case "${mode}" in
             status="❌ Tests failed"
         elif [[ "${command_str}" =~ git[[:space:]]+commit && "${tool_response}" =~ ^\[ ]]; then
             status="💾 Committed"
+            # Capture commit subject line as task context — a human-written summary
+            if [[ -n "${CCP_CONTEXT_FILE:-}" ]]; then
+                _commit_subject=""
+                _commit_subject=$(printf '%s' "${tool_response}" \
+                    | head -1 \
+                    | sed 's/^\[[^]]*\][[:space:]]*//' \
+                    | head -c 80) || true
+                if [[ -n "${_commit_subject}" ]]; then
+                    atomic_write "${CCP_CONTEXT_FILE}" "${_commit_subject}"
+                    _dbg_event "context_set" "context=${_commit_subject}" "source=commit-message"
+                fi
+            fi
         elif [[ "${command_str}" =~ git[[:space:]]+push ]] && \
              [[ "${tool_response}" =~ (error:[[:space:]]+failed[[:space:]]+to[[:space:]]+push|!\ \[rejected\]|!\ \[remote\ rejected\]|ERROR:) ]]; then
             status="🐛 Push failed"

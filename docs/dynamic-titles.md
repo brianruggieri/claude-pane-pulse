@@ -112,7 +112,7 @@ Fired when a Bash tool finishes. We inspect the output for completion keywords:
 |-----------|--------|
 | `N tests passed` / `N specs passed` | `✅ Tests passed` |
 | `N tests failed` / `N specs failing` | `❌ Tests failed` |
-| git output starts with `[` (commit hash) | `💾 Committed` |
+| git output starts with `[` (commit hash) | `💾 Committed` (+ commit subject written to context file) |
 
 **Completion events always win**, regardless of current priority. A `✅ Tests passed` (priority 60) immediately overrides any active status like `🧪 Testing` (priority 80).
 
@@ -128,14 +128,13 @@ Fired when a tool fails:
 ### UserPromptSubmit — User sends a message
 
 1. Clears the status file (removes any stale status such as the startup welcome message)
-2. Writes the first 5 words of the user's prompt to the context file as a placeholder
-3. If `--ai-context` is enabled: spawns a background call to `claude --print` with model `claude-haiku-4-5-20251001`
-4. Haiku distills the full prompt into a 3–5 word summary (opt-in only — uses your subscription)
-5. Summary overwrites the context file when ready (~1–3 seconds)
+2. Sanitizes the prompt (strips shell prompt prefixes like `$`, `%`, `user@host` from pasted content)
+3. Writes the first 5 words of the sanitized prompt to the context file as an immediate placeholder
 
 ### Stop — Claude finishes responding
 
-Clears the status file. The monitor shows `💤 Idle`.
+1. Clears the status file. The monitor shows `💤 Idle`.
+2. If `--ai-context` is enabled: reads `last_assistant_message` from the Stop hook payload, truncates to first 500 + last 500 characters, and spawns a detached background call to `claude --print --model claude-haiku-4-5-20251001` for a 3–5 word summary. The summary overwrites the context file when ready (~1–3 seconds).
 
 ### Event Hooks (Verbose Mode)
 
@@ -150,7 +149,7 @@ Additional hooks fire for lifecycle and permission events. These are only surfac
 | SessionStart | `🚀 Starting` |
 | PreCompact | `📦 Compacting` |
 | SubagentStart | `🤖 Delegating` |
-| SubagentStop | `✅ Complete` |
+| SubagentStop | `✅ Subagent finished` |
 | TeammateIdle | `⏸️ Teammate idle` |
 | ConfigChange | `⚙️ Configuring` |
 
@@ -172,7 +171,8 @@ my-project (main) | Fix Auth Bug | ✏️ Editing
 - Always preserved
 
 **Task summary**
-- First 5 words of your prompt (always); refined to 3–5 word semantic summary if `--ai-context` is enabled
+- First 5 words of your prompt (immediate); refined to 3–5 word summary after the turn completes if `--ai-context` is enabled
+- On `💾 Committed`, the commit subject line replaces the prompt-based context automatically
 - Only appears after the first UserPromptSubmit
 - Before that, the "Welcome" status is shown instead
 
@@ -242,9 +242,9 @@ Claude Code then reads the updated settings file and registers the hooks.
 
 As Claude Code runs:
 - PreToolUse fires → hook_runner sets PreToolUse status
-- PostToolUse fires → hook_runner sets PostToolUse/completion status
-- UserPromptSubmit fires → hook_runner sets Thinking; spawns distillation only if `--ai-context` enabled
-- Stop fires → hook_runner clears status (monitor shows Idle)
+- PostToolUse fires → hook_runner sets PostToolUse/completion status; captures commit subject on `💾 Committed`
+- UserPromptSubmit fires → hook_runner sets Thinking; writes first-5-words context
+- Stop fires → hook_runner clears status (monitor shows Idle); spawns haiku summarization if `--ai-context` enabled
 
 ### Teardown
 
@@ -284,7 +284,7 @@ A separate subshell keeps this work isolated and allows the main session to retu
 
 ### Why Haiku distillation?
 
-User prompts can be long and wandering. When `--ai-context` is enabled, after each user message we run `claude --print` (non-interactive, one turn) with the full prompt to generate a 3–5 word summary. This summary fits neatly in the terminal title and gives context at a glance ("Fix Auth Bug", "Refactor Logging", etc.).
+User prompts can be long and wandering. When `--ai-context` is enabled, after Claude finishes responding the Stop hook sends a truncated excerpt of the response to `claude --print` (non-interactive, one turn) for a 3–5 word summary. This summary fits neatly in the terminal title and gives context at a glance ("Fix Auth Bug", "Refactor Logging", etc.).
 
 This feature is **opt-in** and explicitly uses your Claude subscription. See [docs/ai-context.md](ai-context.md) for the full details, privacy implications, and how to enable it.
 
