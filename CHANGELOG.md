@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-03-20
+
+### Added
+- **Stop-hook haiku summarization** — AI context summaries are now derived from
+  Claude's actual response (`last_assistant_message`) via the Stop hook, delivering
+  ~100% of the time (up from 0.5% with the previous inline strategy). Summaries
+  reflect what Claude *did*, not just what was asked.
+- **Two-phase context** — first-5-words appears immediately on prompt submission;
+  a refined haiku summary overwrites after the turn completes.
+- **Git commit message capture** — commit subject line automatically written to
+  context file on `💾 Committed`, providing a human-written task summary at zero cost.
+- **Context sanitization** — shell prompt prefixes (`(venv) user@host %`) are
+  stripped from first-5-words when users paste terminal output.
+
+### Fixed
+- Clear `CLAUDECODE` env var in haiku subprocess to prevent nested claude call
+  failures.
+
+### Removed
+- **Inline AI context strategy** — `--ai-context-strategy` flag,
+  `--append-system-prompt` injection, `CCP_TASK_SUMMARY` markers, and
+  `inline_captured` sentinel files are all removed. `--ai-context` is now a
+  simple boolean toggle.
+
 ## [1.2.0] - 2026-03-05
 
 ### Added
