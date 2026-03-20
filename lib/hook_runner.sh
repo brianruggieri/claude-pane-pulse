@@ -506,8 +506,8 @@ case "${mode}" in
 
     post-tool)
         # All three output files are checked: status detection writes to
-        # CCP_STATUS_FILE, inline AI context writes to CCP_CONTEXT_FILE, and
-        # branch refresh writes to CCP_BRANCH_FILE.  Skip only if none are set.
+        # CCP_STATUS_FILE, commit message capture writes to CCP_CONTEXT_FILE,
+        # and branch refresh writes to CCP_BRANCH_FILE.  Skip only if none are set.
         [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_CONTEXT_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]] && exit 0
 
         tool=""
@@ -523,37 +523,6 @@ case "${mode}" in
         command_str=""
         command_str=$(printf '%s' "${json_input}" | jq -r '.tool_input.command // ""' 2>/dev/null) || true
 
-        # Inline AI context: detect the PID-scoped CCP_TASK_SUMMARY marker
-        # echoed by the main Claude session (injected via --append-system-prompt).
-        # The marker includes the ccp session PID (CCP_SESSION_PID), making it
-        # unique per session.  Source files on disk always contain the generic
-        # template string (without a real PID), so grep/cat of hook_runner.sh
-        # or bin/ccp can never produce a false match.
-        #
-        # Once captured, a marker file signals future invocations to skip scanning.
-        _inline_captured_file="${STATE_DIR:-/tmp}/inline_captured.${CCP_SESSION_PID:-$$}"
-        if [[ "${CCP_AI_CONTEXT_STRATEGY:-haiku}" == "inline" ]] && \
-           [[ -n "${CCP_CONTEXT_FILE:-}" ]] && \
-           [[ -n "${CCP_SESSION_PID:-}" ]] && \
-           [[ ! -f "${_inline_captured_file}" ]]; then
-            if [[ "${tool_response}" =~ CCP_TASK_SUMMARY_${CCP_SESSION_PID}:(.+) ]]; then
-                _inline_summary="${BASH_REMATCH[1]}"
-                _inline_summary=$(printf '%s' "${_inline_summary}" \
-                    | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' \
-                    | sed "s/^['\"]//;s/['\"]$//")
-                if [[ -n "${_inline_summary}" ]]; then
-                    atomic_write "${CCP_CONTEXT_FILE}" "${_inline_summary}"
-                    touch "${_inline_captured_file}" 2>/dev/null || true
-                    _dbg_event "ai_summary" "summary=${_inline_summary}" "strategy=inline"
-                    _dbg "inline-summary: ${_inline_summary}"
-                fi
-            else
-                # Bash output didn't contain the inline marker — expected for most
-                # Bash calls, but useful for tracking whether a summary ever arrives.
-                _dbg_event "inline_marker_miss" "command=$(printf '%s' "${command_str}" | head -c 80)" "output_len=${#tool_response}"
-            fi
-        fi
-
         # Branch detection runs even without CCP_STATUS_FILE — skip status
         # detection only, not the entire handler.
         [[ -z "${CCP_STATUS_FILE:-}" && -z "${CCP_BRANCH_FILE:-}" ]] && exit 0
@@ -565,6 +534,18 @@ case "${mode}" in
             status="❌ Tests failed"
         elif [[ "${command_str}" =~ git[[:space:]]+commit && "${tool_response}" =~ ^\[ ]]; then
             status="💾 Committed"
+            # Capture commit subject line as task context — a human-written summary
+            if [[ -n "${CCP_CONTEXT_FILE:-}" ]]; then
+                _commit_subject=""
+                _commit_subject=$(printf '%s' "${tool_response}" \
+                    | head -1 \
+                    | sed 's/^\[[^]]*\][[:space:]]*//' \
+                    | head -c 80) || true
+                if [[ -n "${_commit_subject}" ]]; then
+                    atomic_write "${CCP_CONTEXT_FILE}" "${_commit_subject}"
+                    _dbg_event "context_set" "context=${_commit_subject}" "source=commit-message"
+                fi
+            fi
         elif [[ "${command_str}" =~ git[[:space:]]+push ]] && \
              [[ "${tool_response}" =~ (error:[[:space:]]+failed[[:space:]]+to[[:space:]]+push|!\ \[rejected\]|!\ \[remote\ rejected\]|ERROR:) ]]; then
             status="🐛 Push failed"
