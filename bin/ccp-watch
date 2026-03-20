@@ -72,9 +72,7 @@ fi
 last_status=""
 last_status_ts=""
 last_event_ts=""
-pending_summaries=0
 delivered_summaries=0
-inline_miss_warned=false
 total_errors=0
 total_events=0
 
@@ -284,26 +282,11 @@ tail -f "${log}" | while IFS= read -r line; do
         fi
     fi
 
-    # ── Inline summary tracking ────────────────────────────────────────
+    # ── AI summary tracking ────────────────────────────────────────────
     case "${event}" in
-        ai_context_pending)
-            pending_summaries=$((pending_summaries + 1))
-            ;;
         ai_summary)
             delivered_summaries=$((delivered_summaries + 1))
-            alert "OK" "Summary delivered: '${summary}' (${delivered_summaries}/${pending_summaries})"
-            ;;
-        inline_marker_miss)
-            # Only warn once per session — inline strategy is best-effort,
-            # Claude may skip the summary echo entirely.
-            if [[ "${inline_miss_warned}" = false && ${pending_summaries} -gt ${delivered_summaries} ]]; then
-                miss_count=$(jq -n "[inputs | select(.event == \"inline_marker_miss\")] | length" "${log}" 2>/dev/null) || miss_count=0
-                if [[ ${miss_count} -ge 20 ]]; then
-                    cmd=$(printf '%s' "${line}" | jq -r '.command // ""' 2>/dev/null | head -c 40) || cmd=""
-                    alert "INFO" "Inline summary not delivered after ${miss_count} Bash calls (best-effort, using first-5-words fallback)"
-                    inline_miss_warned=true
-                fi
-            fi
+            alert "OK" "Summary delivered: '${summary}' (${delivered_summaries} total)"
             ;;
     esac
 
@@ -339,11 +322,9 @@ tail -f "${log}" | while IFS= read -r line; do
         echo -e "  ${MAGENTA}${BOLD}Session Summary${NC}"
         echo -e "  Events:     ${total_events}"
         echo -e "  Errors:     ${total_errors}"
-        echo -e "  Summaries:  ${delivered_summaries}/${pending_summaries} delivered"
+        echo -e "  Summaries:  ${delivered_summaries} delivered"
         if [[ ${total_errors} -gt 0 ]]; then
             echo -e "  ${RED}${BOLD}Issues detected — review log with: ccp-watch --list${NC}"
-        elif [[ ${pending_summaries} -gt ${delivered_summaries} ]]; then
-            echo -e "  ${YELLOW}Dropped summaries detected${NC}"
         else
             echo -e "  ${GREEN}Clean session.${NC}"
         fi
