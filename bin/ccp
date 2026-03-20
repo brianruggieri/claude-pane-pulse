@@ -507,7 +507,7 @@ main() {
             | awk '{print $1}') || _welcome_name=""
         [[ -z "${_welcome_name}" ]] && _welcome_name="${USER:-}"
         if [[ -n "${_welcome_name}" ]]; then
-            printf '%s' "👋 Welcome back, ${_welcome_name}" > "${CCP_STATUS_FILE}"
+            printf '%s' "👋 Welcome back, ${_welcome_name}!" > "${CCP_STATUS_FILE}"
         fi
 
         # Inject hooks into the project's .claude/settings.local.json
