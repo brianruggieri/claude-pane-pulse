@@ -491,6 +491,149 @@ echo '{}' \
 result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
 assert_empty "stop empties status file"  "${result}"
 
+# ── Tests: stop-hook haiku summarization ──────────────────────────────────────
+
+echo ""
+echo "stop-hook haiku summarization"
+
+# Set up a mock claude binary that captures stdin and outputs a fixed summary
+MOCK_CLAUDE_DIR=$(mktemp -d)
+cat > "${MOCK_CLAUDE_DIR}/claude" <<'MOCK'
+#!/usr/bin/env bash
+# Mock claude binary — reads stdin, outputs a fixed summary
+cat > /dev/null  # consume stdin
+echo "Fixed Auth Login Flow"
+MOCK
+chmod +x "${MOCK_CLAUDE_DIR}/claude"
+
+# Each test uses a unique context file to avoid races with disowned background subprocesses
+HAIKU_CTX_1="${STATE_DIR}/haiku-ctx-1.txt"
+HAIKU_CTX_2="${STATE_DIR}/haiku-ctx-2.txt"
+HAIKU_CTX_3="${STATE_DIR}/haiku-ctx-3.txt"
+HAIKU_CTX_4="${STATE_DIR}/haiku-ctx-4.txt"
+HAIKU_CTX_5="${STATE_DIR}/haiku-ctx-5.txt"
+HAIKU_CTX_6="${STATE_DIR}/haiku-ctx-6.txt"
+
+# Test 1: stop hook with AI context enabled + last_assistant_message → haiku writes summary
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_1}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+printf '%s' '{"last_assistant_message":"I fixed the authentication flow by updating the login handler to properly validate tokens."}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_1}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 2
+result=$(cat "${HAIKU_CTX_1}" 2>/dev/null || true)
+assert_equals "stop-haiku: writes summary to context file" "Fixed Auth Login Flow" "${result}"
+# Also verify status was still cleared (existing behavior preserved)
+status_result=$(cat "${TMP_STATUS}" 2>/dev/null || true)
+assert_empty "stop-haiku: status still cleared" "${status_result}"
+
+# Test 2: stop hook skips haiku when CCP_ENABLE_AI_CONTEXT is not true
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_2}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+printf '%s' '{"last_assistant_message":"I fixed the bug."}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_2}" \
+      CCP_ENABLE_AI_CONTEXT=false CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 2
+result=$(cat "${HAIKU_CTX_2}" 2>/dev/null || true)
+assert_empty "stop-haiku: skips when AI context disabled" "${result}"
+
+# Test 3: stop hook skips haiku when last_assistant_message is empty
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_3}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+printf '%s' '{"last_assistant_message":""}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_3}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 2
+result=$(cat "${HAIKU_CTX_3}" 2>/dev/null || true)
+assert_empty "stop-haiku: skips when last_assistant_message is empty" "${result}"
+
+# Test 4: stop hook skips haiku when last_assistant_message field is missing from JSON
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_4}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+printf '%s' '{"some_other_field":"hello"}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_4}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 2
+result=$(cat "${HAIKU_CTX_4}" 2>/dev/null || true)
+assert_empty "stop-haiku: skips when last_assistant_message field missing" "${result}"
+
+# Test 5: messages >1000 chars are truncated to first 500 + "..." + last 500
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_5}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+# Build a mock claude that echoes back a snippet of what it received on stdin
+# so we can verify truncation happened
+MOCK_TRUNC_DIR=$(mktemp -d)
+cat > "${MOCK_TRUNC_DIR}/claude" <<'MOCK'
+#!/usr/bin/env bash
+# Mock claude binary — captures stdin content to a file for inspection
+input=$(cat)
+# Write the received input to a sidecar file for the test to inspect
+echo "${input}" > "${MOCK_TRUNC_DIR_SIDECAR}"
+echo "Truncation Test Summary"
+MOCK
+chmod +x "${MOCK_TRUNC_DIR}/claude"
+MOCK_SIDECAR="${MOCK_TRUNC_DIR}/captured_input.txt"
+
+# Build a 1200-char message: 600 A's + 600 B's
+long_msg=$(printf '%0600d' 0 | tr '0' 'A')$(printf '%0600d' 0 | tr '0' 'B')
+json_long=$(printf '{"last_assistant_message":"%s"}' "${long_msg}")
+printf '%s' "${json_long}" \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_5}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_TRUNC_DIR}/claude" \
+      MOCK_TRUNC_DIR_SIDECAR="${MOCK_SIDECAR}" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 2
+result=$(cat "${HAIKU_CTX_5}" 2>/dev/null || true)
+assert_equals "stop-haiku: truncated message produces summary" "Truncation Test Summary" "${result}"
+# Verify the captured input contains " ... " (truncation marker)
+if [[ -f "${MOCK_SIDECAR}" ]]; then
+    captured=$(cat "${MOCK_SIDECAR}" 2>/dev/null || true)
+    if [[ "${captured}" == *" ... "* ]]; then
+        pass "stop-haiku: truncated message contains ' ... ' marker"
+    else
+        fail "stop-haiku: truncated message contains ' ... ' marker" "captured input did not contain ' ... '"
+    fi
+else
+    fail "stop-haiku: truncated message contains ' ... ' marker" "sidecar file not found"
+fi
+rm -rf "${MOCK_TRUNC_DIR}"
+
+# Test 6: CLAUDECODE env var is unset in the haiku subprocess
+rm -f "${TMP_STATUS}" "${HAIKU_CTX_6}"
+printf '🧪 Testing' > "${TMP_STATUS}"
+MOCK_CLAUDECODE_DIR=$(mktemp -d)
+cat > "${MOCK_CLAUDECODE_DIR}/claude" <<'MOCK'
+#!/usr/bin/env bash
+cat > /dev/null
+if [[ -z "${CLAUDECODE:-}" ]]; then
+    echo "CLAUDECODE_ABSENT"
+else
+    echo "CLAUDECODE_PRESENT"
+fi
+MOCK
+chmod +x "${MOCK_CLAUDECODE_DIR}/claude"
+printf '%s' '{"last_assistant_message":"I fixed the bug by adding a null check."}' \
+    | CLAUDECODE=1 \
+      CCP_STATUS_FILE="${TMP_STATUS}" CCP_CONTEXT_FILE="${HAIKU_CTX_6}" \
+      CCP_ENABLE_AI_CONTEXT=true CCP_CLAUDE_BIN="${MOCK_CLAUDECODE_DIR}/claude" \
+      bash "${LIB_DIR}/hook_runner.sh" stop
+sleep 2
+result=$(cat "${HAIKU_CTX_6}" 2>/dev/null || true)
+assert_equals "stop-haiku: CLAUDECODE is unset in haiku subprocess" "CLAUDECODE_ABSENT" "${result}"
+rm -rf "${MOCK_CLAUDECODE_DIR}"
+
+rm -rf "${MOCK_CLAUDE_DIR}"
+rm -f "${TMP_STATUS}" "${TMP_CONTEXT}"
+
 # post-tool handler writes completion statuses from Bash output
 printf '🧪 Testing' > "${TMP_STATUS}"
 result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":"3 tests passed"}' \

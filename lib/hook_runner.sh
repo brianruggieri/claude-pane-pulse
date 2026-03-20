@@ -8,6 +8,7 @@
 #        CCP_CONTEXT_FILE - path to write task context (user prompt)
 #        CCP_STATUS_PROFILE - quiet (default) or verbose
 #        CCP_DEBUG_LOG    - optional path for debug output
+#        CCP_CLAUDE_BIN   - override claude binary path (for testing)
 #
 # Always exits 0 — must never block or fail Claude Code.
 
@@ -494,6 +495,57 @@ case "${mode}" in
         else
             atomic_write "${CCP_STATUS_FILE}" ""
         fi
+
+        # AI context summarization — summarize what Claude just did.
+        # Uses last_assistant_message from the Stop hook payload (added in
+        # Claude Code v1.0.17).  The detached subprocess survives the hook's
+        # 5-second timeout — it runs independently after disown.
+        if [[ "${CCP_ENABLE_AI_CONTEXT:-false}" != "true" ]] || \
+           [[ -z "${CCP_CONTEXT_FILE:-}" ]]; then
+            exit 0
+        fi
+
+        last_msg=""
+        last_msg=$(printf '%s' "${json_input}" | jq -r '.last_assistant_message // ""' 2>/dev/null) || true
+        [[ -z "${last_msg}" ]] && exit 0
+
+        _dbg_event "ai_context_stop" "msg_len=${#last_msg}"
+
+        # Truncate: first 500 + last 500 chars
+        _truncated="${last_msg}"
+        if [[ ${#last_msg} -gt 1000 ]]; then
+            _first="${last_msg:0:500}"
+            _last="${last_msg: -500}"
+            _truncated="${_first} ... ${_last}"
+        fi
+
+        _ccp_ctx="${CCP_CONTEXT_FILE}"
+        _ccp_truncated="${_truncated}"
+        _ccp_claude_bin="${CCP_CLAUDE_BIN:-}"
+        (
+            set +e
+            # CLAUDECODE: env var set by Claude Code itself. Must be cleared or
+            # nested `claude --print` calls fail (discovered by Quickchat.ai).
+            # CCP_*: unset so hooks fired by the child claude process become no-ops.
+            unset CLAUDECODE CCP_ENABLE_AI_CONTEXT CCP_STATUS_FILE CCP_CONTEXT_FILE
+
+            claude_bin="${_ccp_claude_bin}"
+            if [[ -z "${claude_bin}" ]]; then
+                claude_bin=$(command -v claude 2>/dev/null \
+                    || command -v claude-code 2>/dev/null || echo "")
+            fi
+            [[ -z "${claude_bin}" ]] && exit 0
+
+            summary=$(printf 'Summarize what this AI assistant just did in 3-5 words. Title-case. No punctuation. No quotes. Reply with only the words, nothing else.\n\nResponse:\n%s' \
+                    "${_ccp_truncated}" \
+                | "${claude_bin}" --print --model claude-haiku-4-5-20251001 \
+                2>/dev/null | head -1 \
+                | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//') || true
+
+            [[ -n "${summary}" ]] && atomic_write "${_ccp_ctx}" "${summary}"
+            _dbg_event "ai_summary" "summary=${summary}" "strategy=stop-haiku"
+        ) &
+        disown 2>/dev/null || true
         ;;
 
     post-tool)
