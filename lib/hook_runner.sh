@@ -426,6 +426,7 @@ case "${mode}" in
         sanitized_prompt=$(printf '%s' "${raw_prompt}" \
             | sed 's/^([^)]*)[[:space:]]*//' \
             | sed 's/^[a-zA-Z0-9._-]*@[a-zA-Z0-9._-]*[[:space:]]*//' \
+            | sed 's/^[a-zA-Z0-9._-]*[[:space:]]*[%$#>][[:space:]]*//' \
             | sed 's/^[%$#>][[:space:]]*//')
 
         # Write first-5-words placeholder immediately so the title updates at once
