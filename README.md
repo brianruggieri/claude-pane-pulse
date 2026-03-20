@@ -41,7 +41,9 @@ Each pane title is independent — project, branch, task, and live status update
 - **Priority-based display**. Errors always show first. Completions (tests passed, committed) immediately override whatever else is showing.
 - **Hook-based**. Uses Claude Code's own hook events for status. No output parsing, no regex, just structured JSON.
 - **Session tracking**. Save and re-open sessions by title with `--goto`.
-- **AI task summaries**. `--ai-context` refines your prompt into a clean 3-5 word label shown in the title. Two strategies: `haiku` (separate claude-haiku call, fully invisible) or `inline` (zero extra API calls, uses the already-outgoing session). Both are opt-in.
+- **AI task summaries**. `--ai-context` refines each turn into a clean 3-5 word label shown in the title. Uses claude-haiku to summarize after each turn completes. Opt-in only.
+- **Git commit context**. When Claude commits, the commit subject line automatically appears as the task context — no flag needed.
+- **Context sanitization**. Shell prompt prefixes (`$`, `%`, `user@host`, etc.) are automatically stripped from pasted terminal content before building the title.
 - **Tested on iTerm2, Terminal.app, and tmux**. Detection logic for WezTerm, Ghostty, and Kitty is included but unverified.
 - **Full Claude passthrough**. Every Claude Code flag works exactly as expected.
 
@@ -75,14 +77,11 @@ ccp --permission-mode bypassPermissions
 # AI-summarized task labels in the title (opt-in, uses your subscription)
 ccp --ai-context "Fix the auth bug"
 
-# Inline strategy — zero extra API calls (one echo visible per session)
-ccp --ai-context --ai-context-strategy inline "Fix the auth bug"
-
 # Debug mode — structured JSONL logging + live Pulse Monitor (iTerm2: auto-opens in split pane)
 ccp --debug-ccp "Fix the auth bug"
 ```
 
-> See [AI Task Summaries](#ai-task-summaries) for the `--ai-context` flag and strategy options.
+> See [AI Task Summaries](#ai-task-summaries) for the `--ai-context` flag.
 
 ## Installation
 
@@ -232,30 +231,19 @@ Precedence: `--status-profile` flag > `CCP_STATUS_PROFILE` env var > `quiet` def
 
 ## AI Task Summaries
 
-With `--ai-context`, ccp distills your prompt into a clean 3-5 word label shown in the title. Without it, the first words of your prompt show as-is.
+With `--ai-context`, ccp generates a clean 3-5 word label for each conversation turn. Without it, the first words of your prompt show as-is.
 
-Two strategies are available:
-
-| | `haiku` (default) | `inline` |
-|---|---|---|
-| Extra API calls | 1 per prompt | 0 |
-| Visible to user | No | One `echo` per session |
-| Summary context | Prompt text only | Full codebase + history |
-| Reliability | High | Model-dependent |
+How it works: when Claude finishes responding, the Stop hook sends a truncated excerpt of the response to claude-haiku for a 3-5 word summary. The summary overwrites the first-5-words placeholder in the title.
 
 ```bash
-# Haiku strategy (default) — invisible, uses your subscription
+# Enable AI summaries (opt-in, uses your subscription)
 ccp --ai-context "PR #89 - Fix auth"
 
-# Inline strategy — zero extra API calls, one echo visible per session
-ccp --ai-context --ai-context-strategy inline "PR #89 - Fix auth"
-
-# Always on, via environment variables
+# Always on, via environment variable
 export CCP_ENABLE_AI_CONTEXT=true
-export CCP_AI_CONTEXT_STRATEGY=inline   # optional, default is haiku
 ```
 
-See [docs/ai-context.md](docs/ai-context.md) for the full trade-off analysis.
+See [docs/ai-context.md](docs/ai-context.md) for the full details.
 
 ## Claude Flag Passthrough
 
@@ -430,8 +418,7 @@ my-app (bug/login-crash)     | login bug  | ⬆️ Pushing
 | `--auto-title` | Auto-detect title from git branch (this is the default) |
 | `--no-dynamic` | Static title only, no live updates |
 | `--status-profile quiet\|verbose` | Which events to surface (default: `quiet`) |
-| `--ai-context` | Summarize prompts into a 3-5 word title label (opt-in) |
-| `--ai-context-strategy haiku\|inline` | Summary strategy: `haiku` (default, invisible) or `inline` (zero extra API calls) |
+| `--ai-context` | Summarize each turn into a 3-5 word title label (opt-in, uses your subscription) |
 | `--debug-ccp` | Structured JSONL debug logging to `~/.config/claude-code-pulse/logs/`; auto-opens Pulse Monitor in iTerm2 |
 | `--goto TITLE` | Re-open a previous session by title |
 | `--list`, `-l` | List active ccp sessions |
@@ -445,8 +432,7 @@ my-app (bug/login-crash)     | login bug  | ⬆️ Pushing
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CCP_STATUS_PROFILE` | `quiet` | Default status profile |
-| `CCP_ENABLE_AI_CONTEXT` | `false` | Always-on AI prompt summarization |
-| `CCP_AI_CONTEXT_STRATEGY` | `haiku` | Summary strategy: `haiku` or `inline` |
+| `CCP_ENABLE_AI_CONTEXT` | `false` | Always-on AI context summarization |
 | `CCP_DEBUG` | `false` | Always-on structured JSONL debug logging |
 
 ## Documentation

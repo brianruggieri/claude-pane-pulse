@@ -4,7 +4,7 @@
 
 ## What It Does
 
-When enabled, ccp watches the first message you send to Claude in each session and generates a concise 3–5 word label for it. That label appears in the terminal title alongside the current status:
+When enabled, ccp generates a concise 3–5 word label for each conversation turn and shows it in the terminal title:
 
 ```
 ✳ my-project (main) | Fix Auth Bug | ✏️ Editing
@@ -26,120 +26,80 @@ With `--ai-context`, it's refined into a clean label:
 
 ## How It Works
 
-There are two strategies for generating the AI summary:
+Context updates happen in two phases:
 
-### Haiku Strategy (default)
+### Phase 1: First-5-words (immediate)
 
-When you send a prompt, `hook_runner.sh`'s UserPromptSubmit handler:
+When you send a prompt, `hook_runner.sh`'s UserPromptSubmit handler writes the first 5 words of your prompt to the context file immediately. The title updates within one polling cycle.
 
-1. Writes the first 5 words of your prompt to the context file immediately (instant title update)
-2. Fires a **detached background subprocess** with `claude --print --model claude-haiku-4-5-20251001`
-3. Sends this exact prompt to Haiku:
+### Phase 2: Haiku summary (after turn completes)
 
-```
-Summarize this developer task in 3-5 words. Title-case. No punctuation. No quotes. Reply with only the words, nothing else. Task: <your prompt text>
-```
+When Claude finishes responding, the Stop hook fires with `last_assistant_message` — the full text of Claude's response. A detached background subprocess:
 
-4. When Haiku responds (~1–3 seconds), overwrites the context file with the summary
+1. Truncates the response to first 500 + last 500 characters
+2. Sends it to `claude --print --model claude-haiku-4-5-20251001` with a summarization prompt
+3. Haiku returns a 3–5 word title-case summary
+4. The summary overwrites the first-5-words placeholder in the context file
 5. The title_updater picks it up on the next heartbeat
 
 The subprocess is fully detached (`& disown`). It never blocks Claude, never delays your session, and never writes to the terminal.
 
-### Inline Strategy (`--ai-context-strategy inline`)
+## Additional Context Sources
 
-Instead of a separate API call, ccp piggybacks on the main Claude session:
+Two features provide context automatically, independent of `--ai-context`:
 
-1. Writes the first 5 words of your prompt to the context file immediately (instant title update)
-2. Injects a lightweight `--append-system-prompt` instruction into Claude's launch args
-3. Claude reads the instruction and, as its very first action, runs: `echo 'CCP_TASK_SUMMARY:Fix JWT Auth Bug'`
-4. The PostToolUse hook captures the echo output, extracts the summary after the `CCP_TASK_SUMMARY:` marker
-5. Writes the summary to the context file
-6. The title_updater picks it up on the next heartbeat
+### Git commit message capture
 
-**Key differences from Haiku:**
-- **Zero extra API calls** — the summary is part of the main Claude response
-- **Zero extra cost** — no additional subscription usage
-- **Better summaries** — Claude has full codebase context, not just the prompt text
-- **One visible echo** — the `echo 'CCP_TASK_SUMMARY:...'` appears in Claude's tool use output (minimal, one-time)
-- **Model-dependent** — Claude may occasionally skip the instruction (falls back to first-5-words)
+When Claude runs `git commit` and the PostToolUse hook detects a successful commit, the commit subject line is extracted and written to the context file. This replaces the prompt-based context with a human-readable summary — e.g., `feat: add OAuth support` appears alongside `💾 Committed`.
+
+### Context sanitization
+
+Shell prompt prefixes are automatically stripped from pasted terminal content before extracting the first-5-words placeholder. Patterns like `user@host`, `(venv)`, `$`, `%`, `#`, and `>` at the start of the prompt are removed so prefix tokens don't waste the 5-word budget.
 
 ## What Data Is Sent
 
-### Haiku Strategy
+**Claude's response text** — the `last_assistant_message` field from the Stop hook, truncated to first 500 + last 500 characters.
 
-**Exactly your prompt text** — the full message you typed into Claude Code, after stripping the project name if it appears in the title.
-
-No other data is sent. No file contents, no tool outputs, no conversation history. Just the user-facing message you already typed.
-
-### Inline Strategy
-
-**Nothing extra.** Your prompt is already being sent to Claude as part of the normal session. The only addition is a ~250-character system prompt instruction appended via `--append-system-prompt`. No additional user data leaves your machine.
+No file contents beyond what Claude already processed. No conversation history. Just a truncated excerpt of what Claude just said.
 
 ## Subscription Usage
 
-### Haiku Strategy
-
-This strategy calls `claude --print` once per user message. That's one Haiku API call per prompt you send.
+This feature calls `claude --print` once per conversation turn (when Claude stops responding). That's one Haiku API call per turn.
 
 - **Model:** `claude-haiku-4-5-20251001` (the most cost-effective model)
 - **Call type:** Non-interactive, single-turn (`--print` flag)
-- **Context sent:** Your prompt text only (one message, no history)
+- **Context sent:** Truncated response excerpt (max ~1000 chars)
 - **Response:** 3–5 words (minimal token usage)
 
-If you use Claude via subscription (Claude.ai Pro/Max), this counts against your subscription usage. If you use API keys, this counts against your API bill. The per-call cost is minimal (Haiku is Anthropic's cheapest model), but it fires every time you send a message, so usage scales with how much you type.
+If you use Claude via subscription (Claude.ai Pro/Max), this counts against your subscription usage. If you use API keys, this counts against your API bill. The per-call cost is minimal (Haiku is Anthropic's cheapest model), but it fires every turn, so usage scales with conversation length.
 
 **This is exactly why the feature is opt-in.** We don't think it's appropriate to silently consume your subscription on your behalf. You should choose to enable it knowing what it does.
 
-### Inline Strategy
-
-**Zero additional subscription usage.** The summary is generated as part of the main Claude session you're already paying for. The only overhead is a single `echo` command in Claude's first response — negligible additional tokens.
-
 ## Privacy
-
-### Haiku Strategy
 
 The data flow is:
 
 ```
-Your prompt text → claude CLI (your auth) → Anthropic API → 3-5 word summary
+Claude's response text (truncated) → claude CLI (your auth) → Anthropic API → 3-5 word summary
 ```
 
-- Your prompt is processed under your own Claude account and credentials
+- Claude's response is processed under your own Claude account and credentials
 - The summary request is subject to Anthropic's standard privacy policy — the same policy that applies to every message you send to Claude
 - ccp does not see, log, or store the data — the call happens entirely through your local `claude` CLI binary
 
 Nothing is routed through ccp's infrastructure (there isn't any). The subprocess calls the same `claude` binary you use interactively.
 
-### Inline Strategy
-
-The data flow is:
-
-```
-Your prompt text (already going) + ~250-char system instruction → Claude session → echo summary
-```
-
-- Your prompt is sent to Anthropic **once** (the main session), not twice
-- The only addition is a short system prompt instruction appended via `--append-system-prompt`
-- No data leaves your machine beyond what already would without ccp
-- ccp does not see, log, or store the data — the echo output is captured by the PostToolUse hook and written to a local temp file
+**Note:** Claude's response text is sent to Haiku for summarization. If the response contains sensitive information (secrets, credentials, personal data), that content will be included in the summarization request.
 
 ## How to Enable
 
 ```bash
-# Flag (per session) — uses Haiku strategy by default
+# Flag (per session)
 ccp --ai-context "My task"
-
-# Inline strategy (no extra API calls — recommended)
-ccp --ai-context --ai-context-strategy inline "My task"
 
 # Environment variable (always-on — add to ~/.zshrc or ~/.bashrc)
 export CCP_ENABLE_AI_CONTEXT=true
 ccp "My task"  # AI context active without --ai-context flag
-
-# Inline strategy always-on
-export CCP_ENABLE_AI_CONTEXT=true
-export CCP_AI_CONTEXT_STRATEGY=inline
-ccp "My task"
 ```
 
 The flag and env var are equivalent. The env var is the recommended approach if you always want AI context active.
@@ -147,22 +107,16 @@ The flag and env var are equivalent. The env var is the recommended approach if 
 When enabled, ccp prints a disclosure at startup:
 
 ```
-# Haiku strategy
 Dynamic titles: enabled
 Status profile: quiet
 AI context:     enabled (prompts summarized via claude-haiku — uses your subscription)
-
-# Inline strategy
-Dynamic titles: enabled
-Status profile: quiet
-AI context:     enabled (inline — summary via system prompt, no extra API calls)
 ```
 
 ## How to Disable
 
 Don't pass `--ai-context`. That's all.
 
-If you had previously set `CCP_ENABLE_AI_CONTEXT=true` in your shell profile, remove that line. If you also set `CCP_AI_CONTEXT_STRATEGY=inline`, remove that too.
+If you had previously set `CCP_ENABLE_AI_CONTEXT=true` in your shell profile, remove that line.
 
 ## Without AI Context
 
